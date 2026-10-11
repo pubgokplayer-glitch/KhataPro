@@ -47,7 +47,14 @@ enum KeyWrapAlgorithm {
   /// AES-256-GCM in pure software, for platforms whose native crypto we do not
   /// link. Kept in the enum so a future revision can populate it without a
   /// format break.
-  aes256GcmSoftware('aes-256-gcm');
+  aes256GcmSoftware('aes-256-gcm'),
+
+  /// iOS only: the Secure Enclave holds EC P-256 keys, not AES, so the DEK is
+  /// wrapped with ECIES (X9.63 KDF + AES-GCM) under an enclave-resident key. The
+  /// envelope's `ciphertext` is the whole ECIES blob, ephemeral public key
+  /// included, and `nonce` is unused. Added in the sync deliverable; no stored
+  /// row changes meaning because `key_material.wrap_algo` was always a string.
+  eciesP256SecureEnclave('ecies-p256-secure-enclave');
 
   const KeyWrapAlgorithm(this.id);
 

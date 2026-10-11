@@ -56,7 +56,61 @@ The headline numbers: **81/81** checks in `tool/data_layer_verify.dart`,
 | 5 | `tool/crdt_verify.dart` | 55/55 |
 | 6 | `tool/crypto_verify.dart` · `tool/aes_verify.dart` | 72/72 · 27/27 |
 
-## ⏭ Deliverable 3 — UI (Impeller, EN + UR)
+## ✅ Deliverable 3 — Platform security bindings, BYOC backup, LAN sync — **delivered**
+
+Read `docs/SYNC.md` for the full account. The headers: **54/54** checks in
+`tool/security_verify.dart`, **133/133** in `tool/sync_verify.dart`, the whole
+Deliverable 2 suite re-run green after the changes, and **every file in `lib/`
+type-checked** — including the five that import Flutter and a plugin, which are checked
+against signature stubs transcribed from the pinned package versions
+(`tool/plugin_stubs/`, see `docs/SYNC.md` §5.1).
+
+* **Platform security bindings** — `lib/platform/security/`: the custody ladder
+  (hardwareBiometric → hardwareDevice → passphraseWrapped), the **two-key design**
+  that lets a background sync open the database with no biometric prompt while
+  export still requires one, Android Keystore (`android/app/src/main/kotlin/com/khata/pro/security/SecurityChannel.kt`)
+  and iOS Secure Enclave (`ios/Runner/Security/SecurityChannel.swift`)
+  implementations, and a fake keystore whose refusals are faithful enough to test
+  the policy against.
+* **BYOC backup** — `lib/sync/backup/`: the **KPB1** pack format (per-chunk MACs,
+  a merkle root in the header, chunk-index nonces), the resumable transfer engine
+  (checkpoints, verified progress, backoff, typed failures), and two cloud stores —
+  Google Drive (`drive.file` + `appDataFolder`, resumable sessions) and iCloud
+  (ubiquity container, `.part` → rename so a half-upload is never restorable).
+* **LAN sync** — `lib/sync/transport/`: WebRTC data channels with **no ICE
+  servers**, mDNS discovery whose TXT records carry nothing about the books, QR
+  pairing with expiry plus a six-digit authentication string compared by two
+  humans, and flow control that keeps a 52 MB first sync from dropping frames.
+
+| # | check | result |
+| --- | --- | --- |
+| 1 | `tool/security_verify.dart` — the ladder, idempotent key creation, no-prompt sync path, per-use export prompt, device lock, enrolment invalidation, both platform envelope flavours | **54/54** |
+| 2 | `tool/sync_verify.dart` — pack round-trip and tamper resistance, upload resumed after a 60 % drop, quota reported rather than retried, Drive 308 handling, iCloud staging/commit, 52 MB flow-control simulation, SDP surgery, QR budget, SAS agreement | **133/133** |
+| 3 | Deliverable 2 re-run after the core changes | 81/81 · 55/55 · 72/72 · 27/27 · 35/35 · 16/16 |
+| 4 | `dart analyze` on all of `lib/` — the five Flutter-facing files included, against pinned-API stubs | clean |
+| 5 | The generated backup bundle, which is the artefact to keep if this workspace is lost (`tool/make_backup_bundle.sh`) | verified |
+
+| # | the six defects the suite caught (each would have shipped) | |
+| --- | --- | --- |
+| 1 | An empty IV was rejected — which would have broken **every unwrap on iOS**, where ECIES carries its own nonce | fixed |
+| 2 | `passphraseOnly` created a keystore key before honouring the user's refusal | fixed |
+| 3 | The uploader counted *chunks sent* as *attempts*, so any backup bigger than 6 chunks failed | fixed |
+| 4 | The pacing window used a running byte total instead of a per-second window, silently disabling pacing | fixed |
+| 5 | `Hlc.encode()` accepted a node id its own parser rejects, so unreadable stamps could be written | fixed |
+| 6 | The QR codec *inflated* a realistic pairing ticket 2.55× — 2838 characters against a hard limit of 2953, i.e. one ICE candidate away from a pairing screen that never draws a code | fixed |
+
+| # | the eight defects the pinned plugin APIs caught (no test here could have) | |
+| --- | --- | --- |
+| 1 | `setLocalDescription` returns `Future<void>` — and was being handed a *minimised* description | fixed |
+| 2 | WebRTC candidates never reached the far side: gathering finished after the ticket was built, and the receiver ignored `ticket.candidates` | fixed |
+| 3 | The SDP minimiser dropped `a=sctp-port`; the data channel could never have opened | fixed |
+| 4 | `PumpState.copyWith(sentThisWindow:)` named a field that does not exist (`sentThisSecond`) | fixed |
+| 5 | mDNS TXT values are `Uint8List?`, not `String` — the read-side version compares unequal forever, so discovery would silently find nothing | fixed |
+| 6 | `requiresPairing: version == protocolVersion` inverted the safety flag for incompatible peers | fixed |
+| 7 | The mDNS listener was never removed from the `ChangeNotifier`, leaking an `NsdManager` registration per visit to the sync screen | fixed |
+| 8 | The iCloud store was built around a container path the plugin does not expose, and treated `upload()` as complete when it only means the local container copy exists | fixed |
+
+## ⏭ Deliverable 4 — UI (Impeller, EN + UR)
 
 * Design system: typography (Inter + Noto Nastaliq Urdu, RTL-correct),
   4/8 pt spacing scale, 12 semantic colours, light/dark.
@@ -67,24 +121,13 @@ The headline numbers: **81/81** checks in `tool/data_layer_verify.dart`,
 * Performance guardrails enforced by review + a golden test: no `saveLayer`, no
   layout in `build` hot paths, `RepaintBoundary` on charts, `const` everywhere.
 
-## ⏭ Deliverable 4 — BYOC backup
+## ⏭ Deliverable 5 — more sync surface
 
 * Drive: OAuth via the user's own client id, `drive.file` + `appDataFolder`,
   pack chain upload/download, restore-with-verification.
 * iCloud: ubiquity container, same pack format.
 * Local file target (SD card / SAF) for users with no cloud at all.
 * Recovery phrase (BIP-39, Argon2id wrap) + `recovery_guard` flows.
-
-## ⏭ Deliverable 5 — P2P sync
-
-* mDNS advert/discover, QR pairing with Ed25519 pinning, WebRTC data channel
-  transport with MTU-aware chunking and backpressure.
-* Apply pipeline: `BEGIN → write_mode='sync' → INSERT OR IGNORE → gate →
-  COMMIT`, wired to `sync_cursors` and the oplog.
-* Snapshot/merkle fast path for long-separated devices.
-* The chaos suite (`integration_test/sync_chaos_test.dart`) must pass before
-  this ships: random reordering, duplicate delivery, mid-batch kills, ±2 h
-  clock skew, replayed history.
 
 ## ⏭ Deliverable 6 — Scale & trust features
 

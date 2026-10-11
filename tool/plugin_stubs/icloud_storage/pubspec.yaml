@@ -1,0 +1,5 @@
+name: icloud_storage
+version: 2.2.0
+publish_to: none
+environment:
+  sdk: ^3.10.0

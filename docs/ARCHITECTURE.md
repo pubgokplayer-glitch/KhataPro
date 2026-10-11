@@ -178,10 +178,30 @@ Data Encryption Key (DEK, 32 random bytes)
 SQLCipher key       vault DEK           pack DEK   (independent derivations)
 (DB pages)       (attachments)        (Drive/iCloud)
 ```
-* **SQLCipher 4, 256-bit AES**, key = Argon2id(passphrase or random DEK) with
-  `m = 64 MiB, t = 3, p = 1` — 2026-appropriate parameters, ~0.4 s on a
-  mid-range phone, calibrated at first run and stored in `key_material.kdf_params`
-  so a device that is slow today can be re-tuned without a migration.
+* **SQLCipher 4, 256-bit AES.** What SQLCipher is handed is decided by the custody
+  level, and the two cases are genuinely different — conflating them was a mistake
+  in an earlier draft of this document:
+  * **Hardware custody (the normal case).** A **random 32-byte DEK** generated on
+    the device, wrapped by an Android Keystore / iOS Secure Enclave key (see
+    `lib/platform/security/`), and passed to SQLCipher as a raw key —
+    `PRAGMA key = "x'<64 hex>'"`. No SQLCipher KDF runs at all in this path, which
+    is why opening the database is milliseconds rather than a second. Argon2id has
+    nothing to do with this key: a random key needs no stretching.
+  * **Passphrase custody (fallback, or the user's choice).** The DEK is wrapped by
+    a KEK derived with **Argon2id** (`m = 64 MiB, t = 3, p = 1`, lanes 1 — more
+    lanes help a server, not a phone). Argon2id is applied to the *passphrase*, in
+    `lib/core/security/kdf.dart`; it wraps the DEK, and the DEK is what SQLCipher
+    receives. Parameters live in `key_material.kdf_params` so they can be re-tuned
+    without a migration.
+  * A KEK passphrase handed to SQLCipher *as a passphrase* is the last resort: then
+    SQLCipher runs its own PBKDF2-HMAC-SHA512 (256 000 rounds), which is exactly the
+    per-open cost the singleton connection exists to avoid.
+* **Domain separation by HKDF-SHA256.** The vault DEK (attachments, Deliverable 5)
+  and the backup pack keys (Deliverable 3) are derived from their own wrapping keys
+  — never from the DB DEK — with distinct `info` strings, so a leaked pack key tells
+  an attacker nothing about the database. See `lib/sync/backup/kpb1_format.dart`
+  (`khata-pro/kpb1/mac/v1`) and `lib/sync/transport/qr_pairing.dart`
+  (`khata-pro/pairing/sas/v1`).
 * `PRAGMA cipher_memory_security = ON` while unlocked; keys are zeroed on lock.
 * **Screenshots:** `FLAG_SECURE` (Android) and a blur overlay on
   `applicationWillResignActive` (iOS) hide amounts in the recents thumbnail.

@@ -180,6 +180,39 @@ final class AccountsDao extends DaoBase {
     return [for (final row in rows) AccountBalance.fromRow(row)];
   }
 
+  /// A party sub-ledger's account code: `1200·Zubaida Gene-1F3C9A2B`.
+  ///
+  /// Bounded to the schema's 24 characters and discriminated from the **tail** of the
+  /// party id, which is where UUIDv7 keeps its randomness. Pure in its arguments, so the
+  /// same party always yields the same code: the code is replicated as data, and a device
+  /// that re-derived it differently would fight the merge.
+  static String _partyAccountCode({
+    required String prefix,
+    required String partyName,
+    required String partyId,
+    int discriminatorLength = 8,
+  }) {
+    final tag = partyId.replaceAll('-', '').toUpperCase();
+    final discriminator = tag.length <= discriminatorLength
+        ? tag
+        : tag.substring(tag.length - discriminatorLength);
+    final head = '$prefix·';
+    // Room for the readable part, once the discriminator and its dash are paid for.
+    final room = 24 - head.length - discriminator.length - 1;
+    final readable = room <= 0
+        ? ''
+        : (partyName.length <= room ? partyName : partyName.substring(0, room));
+    final code = '$head$readable-$discriminator';
+    if (code.length > 24) {
+      throw InvariantViolation(
+        invariantCode: 'INT-7',
+        message: 'the control account code "$prefix" leaves no room for a party '
+            'sub-ledger code within the 24-character schema limit',
+      );
+    }
+    return code;
+  }
+
   /// Every posting path calls this to make sure a party has its sub-ledger.
   ///
   /// Idempotent: the `accounts` table has a partial unique index on
@@ -233,32 +266,78 @@ final class AccountsDao extends DaoBase {
       [control.read<String>('id')],
     );
 
+    // ── the account code ─────────────────────────────────────────────────────
+    //
+    // `code` is `CHECK (length(code) BETWEEN 1 AND 24)` and unique per ledger among
+    // live rows, and it is user-visible in the chart of accounts, so it is worth
+    // deriving it from the party's name. The first cut of this line did exactly that
+    // — `'$controlCode·$shortName'` with the name truncated to 24 — and was wrong
+    // twice over, which the UI/data integration test found the hard way:
+    //
+    //   · the five-character prefix (`1200·`) pushed a 20-character name to 25, the
+    //     CHECK constraint rejected the row, `INSERT OR IGNORE` hid the rejection,
+    //     and the caller got INT-7. **No party with a name longer than 19
+    //     characters could be created at all** — "Zubaida General Store" failed.
+    //   · two parties whose names share a prefix produced identical codes, the
+    //     second row was ignored by the unique index, and the caller got INT-7 again.
+    //
+    // So the name is truncated into the space that is *actually left* after the
+    // prefix, a separator and a discriminator; and if the discriminator collides
+    // anyway, it is widened and the insert retried, rather than reported as a
+    // failure that the shopkeeper cannot act on. The discriminator comes from the
+    // tail of the id — UUIDv7 puts the millisecond timestamp in the *head*, so its
+    // first characters are shared by every party created in the same few hours and
+    // would discriminate nothing.
+    final prefix = controlCode ?? controlRole;
     final id = newRowId();
     final stamp = newStamp();
     final now = DateTime.now().millisecondsSinceEpoch;
-    await exec(
-      'INSERT OR IGNORE INTO accounts (id, ledger_id, parent_id, code, name, name_ur, '
-      'kind, group_code, role, normal_balance, is_postable, is_system, currency_code, '
-      'party_id, hlc, node_id, rev, created_at, updated_at) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 1, 0, ?, ?, ?, ?, 1, ?, ?)',
-      [
-        id,
-        ledgerId,
-        control.read<String>('id'),
-        '${controlCode ?? controlRole}·$shortName',
-        '$shortName (${controlCode ?? controlRole})',
-        party.read<String?>('name_ur'),
-        control.read<int>('kind'),
-        control.read<String?>('group_code'),
-        control.read<int>('normal_balance'),
-        control.read<String>('currency_code'),
-        partyId,
-        stamp.hlc.encode(),
-        nodeId,
-        now,
-        now,
-      ],
-    );
+
+    String? created;
+    for (final discriminatorLength in const [8, 12, 16]) {
+      final code = _partyAccountCode(
+        prefix: prefix,
+        partyName: partyName,
+        partyId: partyId,
+        discriminatorLength: discriminatorLength,
+      );
+      await exec(
+        'INSERT OR IGNORE INTO accounts (id, ledger_id, parent_id, code, name, name_ur, '
+        'kind, group_code, role, normal_balance, is_postable, is_system, currency_code, '
+        'party_id, hlc, node_id, rev, created_at, updated_at) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 1, 0, ?, ?, ?, ?, 1, ?, ?)',
+        [
+          id,
+          ledgerId,
+          control.read<String>('id'),
+          code,
+          '$shortName (${controlCode ?? controlRole})',
+          party.read<String?>('name_ur'),
+          control.read<int>('kind'),
+          control.read<String?>('group_code'),
+          control.read<int>('normal_balance'),
+          control.read<String>('currency_code'),
+          partyId,
+          stamp.hlc.encode(),
+          nodeId,
+          now,
+          now,
+        ],
+      );
+      created = await scalarString(
+        'SELECT id FROM accounts WHERE ledger_id = ? AND party_id = ? '
+        'AND role IS NULL AND deleted_at IS NULL LIMIT 1',
+        [ledgerId, partyId],
+      );
+      if (created != null) break;
+    }
+    if (created == null) {
+      throw InvariantViolation(
+        invariantCode: 'INT-7',
+        message: 'the sub-ledger account for party $partyId could not be created '
+            '(a unique code or role constraint rejected it)',
+      );
+    }
 
     await enqueueOplog(
       table: 'accounts',

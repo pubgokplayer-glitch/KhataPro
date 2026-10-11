@@ -99,11 +99,35 @@ final class Hlc implements Comparable<Hlc> {
   // ── encoding ────────────────────────────────────────────────────────────
 
   /// The 57-character form stored in `hlc` columns and compared bytewise.
-  String encode() => [
-        physicalMs.toString().padLeft(physicalDigits, '0'),
-        counter.toRadixString(16).padLeft(counterDigits, '0'),
+  ///
+  /// **Fixed width or nothing.** Every field is zero-padded to its exact width and
+  /// the node id must be a 36-character UUID, because that is the *only* reason
+  /// SQLite's BINARY ordering over these strings equals causal ordering. A shorter
+  /// node id would still sort, silently, in the wrong order — so it is refused here,
+  /// at the moment of writing, rather than discovered during a merge.
+  String encode() {
+    if (!isValidNodeId(nodeId)) {
+      throw ArgumentError.value(
         nodeId,
-      ].join(':');
+        'nodeId',
+        'must be a 36-character UUID: the fixed width is what makes bytewise '
+            'ordering causal (see docs/DATA_LAYER.md)',
+      );
+    }
+    if (physicalMs < 0 || physicalMs > maxPhysicalMs) {
+      throw ArgumentError.value(
+        physicalMs,
+        'physicalMs',
+        'does not fit in $physicalDigits digits — a clock this far from 1970 means '
+            'the device clock is wrong, not that the format is too small',
+      );
+    }
+    return [
+      physicalMs.toString().padLeft(physicalDigits, '0'),
+      counter.toRadixString(16).padLeft(counterDigits, '0'),
+      nodeId,
+    ].join(':');
+  }
 
   /// Strict parse. Rejects anything that would break bytewise ordering — a
   /// lenient parser here would silently corrupt causal ordering, which is the

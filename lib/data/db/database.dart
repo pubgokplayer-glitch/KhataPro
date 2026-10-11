@@ -199,6 +199,76 @@ final class KhataDatabase extends GeneratedDatabase {
   /// Injectable for tests.
   HlcPersistence? hlcPersistence;
 
+  // ───────────────────────────────────────────────────────────────────────────
+  //  Telling the UI that something changed
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /// Called after a write **commits**. The app wires this to the UI's change bus
+  /// (`ChangeBus.attachTo`), and every screen re-reads what it is showing.
+  ///
+  /// This exists because drift cannot do it for us, and the reason is worth writing
+  /// down. Drift's stream queries are driven by `notifyUpdates`, which generated
+  /// table code calls; this schema is defined in SQL (`assets/sql`) with a
+  /// deliberately empty `allTables`, and every DAO writes with `customStatement` —
+  /// which drift's own documentation says "does not update stream queries".
+  /// `markTablesUpdated` needs a `TableInfo` per write, which raw SQL does not have.
+  /// So the notification lives here, at the one choke point every write passes
+  /// through on its way to SQLite.
+  ///
+  /// **Commit-scoped, not statement-scoped.** A transaction that the integrity gate
+  /// rolls back must not tell the UI to re-read rows that never existed, and a
+  /// 40-statement sync batch must not produce 40 rebuilds. Writes inside a
+  /// transaction mark it dirty; the notification fires once, when the outermost
+  /// transaction succeeds — and is dropped entirely when it fails.
+  void Function()? changeSink;
+
+  int _writeDepth = 0;
+  bool _pendingChange = false;
+
+  /// Every raw write, including the ones inside a transaction, lands here.
+  @override
+  Future<void> customStatement(String statement, [List<dynamic>? args]) async {
+    await super.customStatement(statement, args);
+    _afterWrite();
+  }
+
+  /// Tracks transaction depth so the notification can be deferred to the commit.
+  @override
+  Future<T> transaction<T>(
+    Future<T> Function() action, {
+    bool requireNew = false,
+  }) async {
+    _writeDepth += 1;
+    try {
+      final result = await super.transaction(action, requireNew: requireNew);
+      _writeDepth -= 1;
+      if (_writeDepth == 0) _emitPendingChange();
+      return result;
+    } catch (_) {
+      _writeDepth -= 1;
+      // An inner savepoint that failed leaves the outer transaction's pending flag
+      // alone; only a failed *outermost* transaction clears it, because only then
+      // is nothing committed.
+      if (_writeDepth == 0) _pendingChange = false;
+      rethrow;
+    }
+  }
+
+  void _afterWrite() {
+    if (_writeDepth > 0) {
+      _pendingChange = true;
+      return;
+    }
+    // A standalone statement is committed the moment it returns.
+    changeSink?.call();
+  }
+
+  void _emitPendingChange() {
+    final pending = _pendingChange;
+    _pendingChange = false;
+    if (pending) changeSink?.call();
+  }
+
   /// Filled during `beforeOpen` — see the class docs on isolates.
   final BootDiagnostics diagnostics = BootDiagnostics();
 

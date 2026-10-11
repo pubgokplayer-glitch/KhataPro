@@ -39,7 +39,7 @@ import '../../core/errors/khata_exception.dart';
 import '../../core/security/hasher.dart';
 
 /// The highest `NNN_*.sql` this build ships. Bump when adding a file.
-const int kLatestSchemaVersion = 10;
+const int kLatestSchemaVersion = 11;
 
 /// Where the SQL files come from. Flutter reads them from `rootBundle`, the
 /// harness reads them from disk — same runner either way, which is why this file
@@ -155,6 +155,7 @@ final class SqlMigrationRunner {
     8: '008_integrity.sql',
     9: '009_conflict_receipts.sql',
     10: '010_integrity_report_fix.sql',
+    11: '011_dashboard_party_rollup.sql',
   };
 
   /// Parses the `schema_version` value out of `schema_meta`.

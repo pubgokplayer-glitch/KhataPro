@@ -1,0 +1,5 @@
+name: flutter_webrtc
+version: 1.6.2
+publish_to: none
+environment:
+  sdk: ^3.10.0

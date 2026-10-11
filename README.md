@@ -105,6 +105,14 @@ bash tool/verify_schema.sh --bench
 * `docs/DATA_LAYER.md` — Deliverable 2: the singleton contract, the commit gate,
   void-vs-reversal, and the evidence behind each claim.
 * `docs/ARCHITECTURE.md` — sync/CRDT/security/performance decisions, with the measured numbers.
+* `docs/SYNC.md` — **Deliverable 3**: key custody (and why background sync never
+  prompts), the KPB1 backup pack, resumable uploads, Drive/iCloud, WebRTC LAN sync,
+  QR pairing, flow control, SDP surgery, and the fourteen defects the harness and
+  the pinned plugin APIs caught.
+* `docs/PLATFORM_SETUP.md` — the Android manifest, iOS entitlements and Google Cloud
+  steps a release build needs, plus exactly which files have not been compiled here.
+* `docs/REPO_AND_BACKUP.md` — the 128 MB workspace budget, the cleanup script, and how
+  to push this repository somewhere it can survive.
 * `docs/DB_SCHEMA.md` — every table, every index, and *why* it exists; the
   double-entry trigger contract; sync-scope table (which tables replicate).
 * `docs/ROADMAP.md` — what is implemented in which deliverable.

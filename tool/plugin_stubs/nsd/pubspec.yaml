@@ -1,0 +1,5 @@
+name: nsd
+version: 5.0.1
+publish_to: none
+environment:
+  sdk: ^3.10.0

@@ -143,6 +143,7 @@ final class OrderReceipt {
   const OrderReceipt({
     required this.entryId,
     required this.entryNo,
+    this.documentId,
     required this.totalMinor,
     required this.commit,
     this.partyId,
@@ -152,6 +153,10 @@ final class OrderReceipt {
 
   final String entryId;
   final String entryNo;
+
+  /// The `documents` row this receipt created, when there is one. Invoices have one, and
+  /// the screen that prints the customer's copy needs it; a bare expense does not.
+  final String? documentId;
   final int totalMinor;
   final CommitReport commit;
   final String? partyId;
@@ -435,6 +440,210 @@ final class OrderBook {
       partyId: partyId,
       memo: draft.memo,
       lines: [for (final line in lines) _describe(line)],
+    );
+  }
+
+  /// Posts an invoice: the journal entry **and** the `documents` row, in one transaction.
+  ///
+  /// D2 posted the money and stopped there, leaving `documents` to "the documents layer".
+  /// Nothing ever wrote that table, so every screen built on `v_document_outstanding` — the
+  /// bill book, the ageing buckets, the customer's printed copy — had nothing to show.
+  /// Building the bill book is what made the gap visible, and this closes it.
+  ///
+  /// One transaction, for a reason that is easy to state and impossible to fix afterwards: an
+  /// invoice without an entry is money the books cannot see, and an entry without an invoice
+  /// is a customer holding a number the ledger disagrees with. Neither state is ever
+  /// observable, because the commit is all-or-nothing.
+  ///
+  /// `amount_paid_minor`, `balance_minor` and `status` are **not** set here. They belong to
+  /// the allocations (`payment_allocations` is the record of what settled what, and
+  /// `trg_alloc_totals` derives those columns from it), so a counter payment is written as an
+  /// allocation against the sale's own entry. Setting them directly would put the same fact
+  /// in two places, and the trigger would overwrite it at the first later payment.
+  Future<OrderReceipt> postInvoice({
+    required int entryDate,
+    required int grossMinor,
+    required int amountPaidMinor,
+    required String partyId,
+    int taxMinor = 0,
+    int cogsMinor = 0,
+    int docKind = DocKind.saleInvoice,
+    String? docNo,
+    int? dueDate,
+    String? memo,
+    String currencyCode = 'PKR',
+    CommitCheck check = CommitCheck.quick,
+  }) async {
+    if (grossMinor <= 0) {
+      throw const InvariantViolation(
+        invariantCode: 'FIN-1',
+        message: 'an invoice must be for a positive amount',
+      );
+    }
+    if (amountPaidMinor < 0 || amountPaidMinor > grossMinor) {
+      throw const InvariantViolation(
+        invariantCode: 'FIN-1',
+        message: 'the amount received must be between zero and the invoice total',
+      );
+    }
+    if (dueDate != null && dueDate < entryDate) {
+      throw const InvariantViolation(
+        invariantCode: 'INV-1',
+        message: 'an invoice cannot be due before it is issued',
+      );
+    }
+
+    return inTransaction(() async {
+      // Numbered from this device's own sequence (`number_sequences` is keyed by node), so
+      // two phones writing offline both number their next invoice 0001 without colliding.
+      final number = docNo ?? await _accounts.nextNumber(docKind);
+      final receipt = await postSale(
+        entryDate: entryDate,
+        grossMinor: grossMinor,
+        amountPaidMinor: amountPaidMinor,
+        taxMinor: taxMinor,
+        cogsMinor: cogsMinor,
+        partyId: partyId,
+        docNo: number,
+        memo: memo,
+        currencyCode: currencyCode,
+        check: check,
+      );
+
+      final documentId = _accounts.newRowId();
+      final stamp = _accounts.newStamp();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await _accounts.exec(
+        'INSERT INTO documents (id, ledger_id, doc_kind, doc_no, doc_date, due_date, '
+        'party_id, entry_id, status, currency_code, subtotal_minor, tax_minor, '
+        'total_minor, amount_paid_minor, balance_minor, hlc, node_id, rev, created_at, '
+        'updated_at) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0, ?, ?, ?, 1, ?, ?)',
+        [
+          documentId,
+          ledgerId,
+          docKind,
+          number,
+          entryDate,
+          dueDate,
+          partyId,
+          receipt.entryId,
+          currencyCode,
+          grossMinor - taxMinor,
+          taxMinor,
+          grossMinor,
+          // The trigger replaces this with total − allocations the moment the first
+          // allocation lands; it is written as the full total so that an invoice with a
+          // counter payment is never briefly shown as settled.
+          grossMinor,
+          stamp.hlc.encode(),
+          _accounts.nodeId,
+          now,
+          now,
+        ],
+      );
+
+      if (amountPaidMinor > 0) {
+        await _allocate(
+          documentId: documentId,
+          paymentEntryId: receipt.entryId,
+          amountMinor: amountPaidMinor,
+          allocatedDate: entryDate,
+          note: 'Paid at the counter',
+        );
+      }
+
+      return OrderReceipt(
+        entryId: receipt.entryId,
+        entryNo: receipt.entryNo,
+        documentId: documentId,
+        totalMinor: grossMinor,
+        commit: receipt.commit,
+        partyId: partyId,
+        memo: receipt.memo,
+        lines: receipt.lines,
+      );
+    });
+  }
+
+  /// Receives a payment **and** settles one invoice with it, in one transaction.
+  ///
+  /// The invoice is the reason the customer is handing over money, so the payment and its
+  /// allocation are one fact. Written together, a crash cannot leave a receipt that nobody
+  /// can match to an invoice.
+  Future<OrderReceipt> settleInvoice({
+    required int entryDate,
+    required int amountMinor,
+    required String documentId,
+    bool toBank = false,
+    String? memo,
+    CommitCheck check = CommitCheck.quick,
+  }) async {
+    if (amountMinor <= 0) {
+      throw const InvariantViolation(
+        invariantCode: 'FIN-1',
+        message: 'a payment must be for a positive amount',
+      );
+    }
+    return inTransaction(() async {
+      final document = await _accounts.one(
+        'SELECT party_id, currency_code FROM documents '
+        'WHERE ledger_id = ? AND id = ? AND deleted_at IS NULL',
+        [ledgerId, documentId],
+      );
+      if (document == null) {
+        throw const InvariantViolation(
+          invariantCode: 'INV-2',
+          message: 'that invoice is not in this book',
+        );
+      }
+      final receipt = await postPaymentIn(
+        entryDate: entryDate,
+        amountMinor: amountMinor,
+        partyId: document.read<String>('party_id'),
+        toBank: toBank,
+        memo: memo,
+        check: check,
+      );
+      await _allocate(
+        documentId: documentId,
+        paymentEntryId: receipt.entryId,
+        amountMinor: amountMinor,
+        allocatedDate: entryDate,
+        note: memo,
+      );
+      return receipt;
+    });
+  }
+
+  /// Records that an entry settled part of a document, and lets the schema do the rest:
+  /// `trg_alloc_totals` re-derives the paid amount, the balance and the status, and
+  /// `trg_alloc_guard` refuses an allocation larger than the outstanding balance — so an
+  /// over-settlement is impossible even if a caller gets the arithmetic wrong.
+  Future<void> _allocate({
+    required String documentId,
+    required String paymentEntryId,
+    required int amountMinor,
+    required int allocatedDate,
+    String? note,
+  }) async {
+    final stamp = _accounts.newStamp();
+    await _accounts.exec(
+      'INSERT INTO payment_allocations (id, ledger_id, payment_entry_id, document_id, '
+      'amount_minor, allocated_date, note, hlc, node_id, created_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        _accounts.newRowId(),
+        ledgerId,
+        paymentEntryId,
+        documentId,
+        amountMinor,
+        allocatedDate,
+        note,
+        stamp.hlc.encode(),
+        _accounts.nodeId,
+        DateTime.now().millisecondsSinceEpoch,
+      ],
     );
   }
 
