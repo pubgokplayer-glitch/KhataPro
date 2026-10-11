@@ -259,7 +259,7 @@ class TextStyle {
   static const TextStyle empty = TextStyle();
 }
 
-class TextSpan {
+class TextSpan extends InlineSpan {
   const TextSpan({this.text, this.children, this.style});
   final String? text;
   final List<InlineSpan>? children;
@@ -268,6 +268,10 @@ class TextSpan {
 
 class InlineSpan {
   const InlineSpan();
+}
+
+class PlaceholderSpan extends InlineSpan {
+  const PlaceholderSpan();
 }
 
 class TextPainter {

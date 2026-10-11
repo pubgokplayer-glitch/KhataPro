@@ -137,6 +137,17 @@ one-line change and `tool/ui_db_verify.dart` can run each one against a real dat
 * **Receivables and payables roll up the control account *and* its party sub-ledgers**
   (migration 011). Filtering on `role = 'ar'` matched the control only, so credit sales
   were invisible to the dashboard: a shop owed Rs 21 300 was told it was owed Rs 15 000.
+* **Ledger rows are coloured by movement, not by sign** (`lib/ui/widgets/ledger_view.dart`
+  `ledgerTone`). The same sign means opposite things on different ledgers: a credit sale is
+  `+` on a customer's ledger and a bill is `+` on a supplier's. So the colour marks the event
+  a shopkeeper scans for — a receipt on a receivable (`moneyIn`), a payment made on a payable
+  (`moneyOut`), literal direction in the cash book — while healthy credit sales and bills stay
+  in default ink, and every amount carries its `Dr`/`Cr` suffix so colour is never the only
+  signal. Green-on-every-positive would paint a customer who owes you more as good news.
+* **Charts identify their series by object identity, not by a content hash.** The state layer
+  hands a fresh `List<DayFlowPoint>` on change and the same instance between changes, so the
+  cache key is O(1); a content hash would walk 90 points on every build to answer a question
+  identity answers immediately.
 * **A party with an unreadable name still gets an account.** Sub-ledger codes are
   `1200·Zubaida Ge-94F92DF1`: the readable part is truncated into the space actually left
   after the prefix (the schema caps codes at 24 characters) and the discriminator comes
@@ -172,8 +183,8 @@ written in the order below, and the analyzer is clean after every batch:
 | `lib/apps/bootstrap.dart` | boot wiring: `FutureBuilder` → splash → gate → `KhataDatabase`; the mapping from `KhataUnlockFailure` to what the gate offers ("try again" vs. "restore a backup") | **done** |
 | `lib/ui/widgets/virtual_list.dart` | `ListView.builder` + `itemExtentBuilder`, scroll-driven prefetch fired once per page, keyed cells, no second `RepaintBoundary` | **done** |
 | `lib/ui/widgets/skeletons.dart` | loading / empty / failed / integrity states, and the paged-list footer that lets a failed page retry in place | **done** |
-| `lib/ui/widgets/ledger_view.dart` | the ledger rows: day headers, running balance, `Dr`/`Cr`, the integrity banner | next |
-| `lib/ui/widgets/live_charts.dart` | `CustomPaint` wrappers over `chart_math.dart` — no plugin, no `saveLayer`, `RepaintBoundary` | next |
+| `lib/ui/widgets/ledger_view.dart` | the ledger rows: day headers, running balance, `Dr`/`Cr`, the integrity banner, and `ledgerTone` — the one colour decision (§4) | **done** |
+| `lib/ui/widgets/live_charts.dart` | `CustomPaint` over `chart_math.dart`: cached `Path`s/ticks/laid-out labels, no plugin, no `saveLayer`, `RepaintBoundary` + `isComplex`/`willChange` | **done** |
 | `lib/ui/screens/{dashboard,party_list,party_ledger,cash_book,stock_book,staff_book,bill_book,settings}.dart` | eight screens, each: watch a provider → `.when(...)` → render → call a command | next |
 | `lib/ui/commands/book_commands.dart` | the write side: `postSale`, `postInvoice`, `settleInvoice`, `postExpense` behind a command object that takes a `ChangeSink` (`changedNow()` for the save button's own receipt) | next |
 | `lib/apps/khata_app.dart`, `lib/main.dart` | `MaterialApp.router` + `ProviderScope` overrides + `go_router` routes, and the entry point | with the screens |

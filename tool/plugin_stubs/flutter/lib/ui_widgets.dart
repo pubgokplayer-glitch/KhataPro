@@ -85,8 +85,39 @@ class InheritedNotifier<T extends Listenable> extends InheritedWidget {
   final T? notifier;
 }
 
+/// The widget that hosts a painter. `isComplex`/`willChange` are the hints the engine uses
+/// to keep a rasterised picture across rebuilds — which is what makes a cached chart cheap
+/// while the list under it scrolls.
+class CustomPaint extends Widget {
+  const CustomPaint({
+    super.key,
+    this.painter,
+    this.foregroundPainter,
+    this.size = Size.zero,
+    this.isComplex = false,
+    this.willChange = false,
+    this.child,
+  });
+  final CustomPainter? painter;
+  final CustomPainter? foregroundPainter;
+  final Size size;
+  final bool isComplex;
+  final bool willChange;
+  final Widget? child;
+}
+
+/// A subtree that is painted into its own layer: `RepaintBoundary`. Used around charts and
+/// long lists so a repaint of one does not repaint the other.
+class RepaintBoundary extends Widget {
+  const RepaintBoundary({super.key, this.child});
+  final Widget? child;
+}
+
 class SizedBox extends Widget {
   const SizedBox({super.key, this.width, this.height, this.child});
+  const SizedBox.shrink({super.key, this.child})
+      : width = null,
+        height = null;
   final double? width;
   final double? height;
   final Widget? child;
@@ -215,6 +246,15 @@ class Stack extends Widget {
 }
 
 class Positioned extends Widget {
+  const Positioned.fill({
+    super.key,
+    this.left = 0,
+    this.top = 0,
+    this.right = 0,
+    this.bottom = 0,
+    this.child,
+  })  : width = null,
+        height = null;
   const Positioned({
     super.key,
     this.left,
@@ -308,13 +348,17 @@ class BoxDecoration extends Decoration {
     this.border,
     this.boxShadow,
     this.gradient,
+    this.shape = BoxShape.rectangle,
   });
   final Color? color;
   final BorderRadius? borderRadius;
   final Border? border;
   final List<BoxShadow>? boxShadow;
   final Gradient? gradient;
+  final BoxShape shape;
 }
+
+enum BoxShape { rectangle, circle }
 
 class BoxShadow {
   const BoxShadow({
@@ -400,6 +444,9 @@ class DefaultTextStyle extends StatelessWidget {
 class Directionality extends InheritedWidget {
   const Directionality({super.key, required this.textDirection, required super.child});
   final TextDirection textDirection;
+
+  /// The ambient text direction: the single source of RTL truth for every widget here.
+  static TextDirection of(BuildContext context) => TextDirection.ltr;
 }
 
 class Icon extends StatelessWidget {
@@ -438,17 +485,33 @@ class GestureDetector extends StatelessWidget {
     this.child,
     this.onTap,
     this.onLongPress,
+    this.onTapDown,
+    this.onTapUp,
     this.behavior,
   });
   final Widget? child;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final void Function(TapDownDetails details)? onTapDown;
+  final void Function(TapUpDetails details)? onTapUp;
   final HitTestBehavior? behavior;
   @override
   Widget build(BuildContext context) => child ?? const SizedBox();
 }
 
 enum HitTestBehavior { deferToChild, opaque, translucent }
+
+class TapDownDetails {
+  const TapDownDetails({this.globalPosition = Offset.zero, this.localPosition = Offset.zero});
+  final Offset globalPosition;
+  final Offset localPosition;
+}
+
+class TapUpDetails {
+  const TapUpDetails({this.globalPosition = Offset.zero, this.localPosition = Offset.zero});
+  final Offset globalPosition;
+  final Offset localPosition;
+}
 
 class InkWell extends StatelessWidget {
   const InkWell({
