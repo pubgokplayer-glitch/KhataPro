@@ -118,9 +118,9 @@ and only verifies if `assetlinks.json` is served (see §4).
         <category android:name="android.intent.category.LAUNCHER" />
     </intent-filter>
 
-    <!-- 1 · Our own scheme. No server, no verification, works from any app that
-previews sent a clickable link. This is the zero-cost path and the one to
-standardise on for SMS/WhatsApp reminders. -->
+    <!-- 1 · Our own scheme. No server, no verification, and any app that renders a
+         tap-able link can hand us the uri. This is the zero-cost path and the one to
+         standardise on for SMS/WhatsApp reminders. -->
     <intent-filter android:autoVerify="false">
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
