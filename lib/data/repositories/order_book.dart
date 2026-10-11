@@ -510,37 +510,17 @@ final class OrderBook {
         check: check,
       );
 
-      final documentId = _accounts.newRowId();
-      final stamp = _accounts.newStamp();
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await _accounts.exec(
-        'INSERT INTO documents (id, ledger_id, doc_kind, doc_no, doc_date, due_date, '
-        'party_id, entry_id, status, currency_code, subtotal_minor, tax_minor, '
-        'total_minor, amount_paid_minor, balance_minor, hlc, node_id, rev, created_at, '
-        'updated_at) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0, ?, ?, ?, 1, ?, ?)',
-        [
-          documentId,
-          ledgerId,
-          docKind,
-          number,
-          entryDate,
-          dueDate,
-          partyId,
-          receipt.entryId,
-          currencyCode,
-          grossMinor - taxMinor,
-          taxMinor,
-          grossMinor,
-          // The trigger replaces this with total − allocations the moment the first
-          // allocation lands; it is written as the full total so that an invoice with a
-          // counter payment is never briefly shown as settled.
-          grossMinor,
-          stamp.hlc.encode(),
-          _accounts.nodeId,
-          now,
-          now,
-        ],
+      final documentId = await _insertDocument(
+        docKind: docKind,
+        docNo: number,
+        docDate: entryDate,
+        dueDate: dueDate,
+        partyId: partyId,
+        entryId: receipt.entryId,
+        currencyCode: currencyCode,
+        subtotalMinor: grossMinor - taxMinor,
+        taxMinor: taxMinor,
+        totalMinor: grossMinor,
       );
 
       if (amountPaidMinor > 0) {
@@ -564,6 +544,318 @@ final class OrderBook {
         lines: receipt.lines,
       );
     });
+  }
+
+  /// Posts a **supplier bill**: goods or services in, money owed out.
+  ///
+  /// The mirror of [postInvoice], and it exists because the mirror is the only correct way to
+  /// do it: D2 could post a sale and had no purchase path at all, so a "purchase bill" posted
+  /// through the sales path would have credited *sales revenue* for goods the shop just
+  /// bought — a wrong number that looks right on every screen. A bill debits what was
+  /// received (`inventory`, or an expense role for a service) and credits the payable, in the
+  /// supplier's own sub-ledger, so the payable ageing report and the supplier's ledger agree.
+  ///
+  /// The payable is **party-scoped** (`AccountRole.partyScoped` contains `ap`), so the
+  /// sub-ledger is resolved — and created if this is the first bill from that supplier —
+  /// before anything is written.
+  Future<OrderReceipt> postBill({
+    required int entryDate,
+    required int grossMinor,
+    required int amountPaidMinor,
+    required String partyId,
+    int taxMinor = 0,
+    int docKind = DocKind.purchaseBill,
+    String? docNo,
+    int? dueDate,
+    String? memo,
+    String debitRole = AccountRole.inventory,
+    bool fromBank = false,
+    String currencyCode = 'PKR',
+    CommitCheck check = CommitCheck.quick,
+  }) async {
+    if (grossMinor <= 0) {
+      throw const InvariantViolation(
+        invariantCode: 'FIN-1',
+        message: 'a bill must be for a positive amount',
+      );
+    }
+    if (amountPaidMinor < 0 || amountPaidMinor > grossMinor) {
+      throw const InvariantViolation(
+        invariantCode: 'FIN-1',
+        message: 'the amount paid must be between zero and the bill total',
+      );
+    }
+    if (dueDate != null && dueDate < entryDate) {
+      throw const InvariantViolation(
+        invariantCode: 'FIN-1',
+        message: 'a bill cannot be due before it is dated',
+      );
+    }
+    if (taxMinor < 0 || taxMinor > grossMinor) {
+      throw const InvariantViolation(
+        invariantCode: 'FIN-1',
+        message: 'the tax on a bill must be between zero and its total',
+      );
+    }
+
+    final onCredit = grossMinor - amountPaidMinor;
+    final paidRole = fromBank ? AccountRole.bank : AccountRole.cash;
+    final paidAccount = await _accounts.byRole(paidRole);
+    _require(paidAccount, paidRole, 'to pay from');
+
+    final debit = await _accounts.byRole(debitRole);
+    _require(debit, debitRole, 'to record what was bought');
+
+    final apId = await _accounts.partyAccountId(partyId) ??
+        await _accounts.ensurePartySubledger(partyId, controlRole: AccountRole.ap);
+    _require(await _accounts.byId(apId), AccountRole.ap, 'to record what is owed');
+
+    return inTransaction(() async {
+      final number = docNo ?? await _accounts.nextNumber(docKind);
+      final lines = <JournalLineDraft>[
+        // What came in: gross, minus the tax, is the cost; the tax is separated below so a
+        // tax-registered shop can net its input tax against what it collected.
+        JournalLineDraft(
+          accountId: debit!.accountId,
+          amountMinor: grossMinor - taxMinor,
+          memo: memo ?? 'Purchase',
+        ),
+      ];
+      final touched = <String>{debit.accountId};
+
+      if (taxMinor > 0) {
+        // Input tax is a *debit* to what would otherwise be payable: under a netting regime
+        // the shop hands over output tax minus input tax, which is exactly this debit. A
+        // separate `tax_receivable` account is the fuller treatment and is on the D5 list;
+        // posting the tax nowhere at all would silently overstate the cost.
+        final tax = await _accounts.byRole(AccountRole.taxPayable);
+        _require(tax, AccountRole.taxPayable, 'to record the tax paid');
+        lines.add(JournalLineDraft(
+          accountId: tax!.accountId,
+          amountMinor: taxMinor,
+          taxMinor: taxMinor,
+          taxBaseMinor: grossMinor - taxMinor,
+          memo: 'Input tax',
+        ));
+        touched.add(tax.accountId);
+      }
+
+      if (amountPaidMinor > 0) {
+        lines.add(JournalLineDraft(
+          accountId: paidAccount!.accountId,
+          amountMinor: -amountPaidMinor,
+          memo: fromBank ? 'Paid by bank' : 'Paid from the till',
+        ));
+        touched.add(paidAccount.accountId);
+      }
+      if (onCredit > 0) {
+        lines.add(JournalLineDraft(
+          accountId: apId,
+          amountMinor: -onCredit,
+          partyId: partyId,
+          memo: 'On account',
+        ));
+        touched.add(apId);
+      }
+
+      final draft = EntryDraft(
+        entryDate: entryDate,
+        source: LedgerSource.purchase,
+        lines: lines,
+        memo: memo ?? 'Purchase',
+        docNo: number,
+        partyId: partyId,
+        currencyCode: currencyCode,
+      );
+      if (draft.balanceMinor != 0) {
+        throw UnbalancedEntryException(
+          debitTotal: draft.totalDebitMinor,
+          creditTotal: draft.totalCreditMinor,
+          entryId: '(new bill)',
+          lineCount: lines.length,
+        );
+      }
+
+      final (posted, report) = await commitChecked(
+        () => _journal.writeAndPost(draft),
+        check: check,
+        touchedAccountIds: touched,
+      );
+
+      final documentId = await _insertDocument(
+        docKind: docKind,
+        docNo: number,
+        docDate: entryDate,
+        dueDate: dueDate,
+        partyId: partyId,
+        entryId: posted.entryId,
+        currencyCode: currencyCode,
+        subtotalMinor: grossMinor - taxMinor,
+        taxMinor: taxMinor,
+        totalMinor: grossMinor,
+      );
+
+      // A bill part-paid on the spot: the payment is an allocation against the bill's own
+      // entry, so `trg_alloc_totals` derives the balance and the status. Writing those
+      // columns directly would put the same fact in two places.
+      if (amountPaidMinor > 0) {
+        await _allocate(
+          documentId: documentId,
+          paymentEntryId: posted.entryId,
+          amountMinor: amountPaidMinor,
+          allocatedDate: entryDate,
+          note: fromBank ? 'Paid by bank' : 'Paid on delivery',
+        );
+      }
+
+      return OrderReceipt(
+        entryId: posted.entryId,
+        entryNo: posted.entryNo,
+        documentId: documentId,
+        totalMinor: grossMinor,
+        commit: report,
+        partyId: partyId,
+        memo: draft.memo,
+        lines: [for (final line in lines) _describe(line)],
+      );
+    });
+  }
+
+  /// Pays a supplier bill: money **out** of the till or bank, allocated against that bill.
+  ///
+  /// Not `settleInvoice` with a flag. The direction of the money is the accounting, and a
+  /// boolean that flips a debit for a credit is exactly the kind of parameter that gets passed
+  /// wrongly once and reconciles a payable into a receivable.
+  Future<OrderReceipt> settleBill({
+    required int entryDate,
+    required int amountMinor,
+    required String documentId,
+    bool fromBank = false,
+    String? memo,
+    CommitCheck check = CommitCheck.quick,
+  }) async {
+    if (amountMinor <= 0) {
+      throw const InvariantViolation(
+        invariantCode: 'FIN-1',
+        message: 'a payment must be for a positive amount',
+      );
+    }
+    return inTransaction(() async {
+      final document = await _accounts.one(
+        'SELECT party_id, currency_code FROM documents '
+        'WHERE ledger_id = ? AND id = ? AND deleted_at IS NULL',
+        [ledgerId, documentId],
+      );
+      if (document == null) {
+        throw const InvariantViolation(
+          invariantCode: 'INV-2',
+          message: 'that bill is not in this book',
+        );
+      }
+      final partyId = document.read<String>('party_id');
+      final sourceRole = fromBank ? AccountRole.bank : AccountRole.cash;
+      final source = await _accounts.byRole(sourceRole);
+      _require(source, sourceRole, 'to pay from');
+      final apId = await _accounts.partyAccountId(partyId) ??
+          await _accounts.ensurePartySubledger(partyId, controlRole: AccountRole.ap);
+
+      final draft = EntryDraft(
+        entryDate: entryDate,
+        source: LedgerSource.paymentOut,
+        memo: memo ?? 'Payment to supplier',
+        partyId: partyId,
+        lines: [
+          JournalLineDraft(
+            accountId: apId,
+            amountMinor: amountMinor,
+            partyId: partyId,
+            memo: 'Against bill',
+          ),
+          JournalLineDraft(
+            accountId: source!.accountId,
+            amountMinor: -amountMinor,
+            memo: fromBank ? 'Paid by bank' : 'Paid from the till',
+          ),
+        ],
+      );
+
+      final (posted, report) = await commitChecked(
+        () => _journal.writeAndPost(draft),
+        check: check,
+        touchedAccountIds: {apId, source.accountId},
+      );
+      await _allocate(
+        documentId: documentId,
+        paymentEntryId: posted.entryId,
+        amountMinor: amountMinor,
+        allocatedDate: entryDate,
+        note: memo,
+      );
+      return OrderReceipt(
+        entryId: posted.entryId,
+        entryNo: posted.entryNo,
+        documentId: documentId,
+        totalMinor: amountMinor,
+        commit: report,
+        partyId: partyId,
+        memo: draft.memo,
+        lines: [for (final line in draft.lines) _describe(line)],
+      );
+    });
+  }
+
+  /// Inserts one `documents` row and returns its id.
+  ///
+  /// Shared by the sales and the purchase paths, which is the point: a document that one path
+  /// writes slightly differently from the other is a document that will sort, age or print
+  /// differently. `amount_paid_minor`, `balance_minor` and `status` are deliberately absent —
+  /// `trg_alloc_totals` owns them, and a value written here would be overwritten at the first
+  /// allocation anyway.
+  Future<String> _insertDocument({
+    required int docKind,
+    required String docNo,
+    required int docDate,
+    required int? dueDate,
+    required String partyId,
+    required String entryId,
+    required String currencyCode,
+    required int subtotalMinor,
+    required int taxMinor,
+    required int totalMinor,
+  }) async {
+    final documentId = _accounts.newRowId();
+    final stamp = _accounts.newStamp();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _accounts.exec(
+      'INSERT INTO documents (id, ledger_id, doc_kind, doc_no, doc_date, due_date, '
+      'party_id, entry_id, status, currency_code, subtotal_minor, tax_minor, '
+      'total_minor, amount_paid_minor, balance_minor, hlc, node_id, rev, created_at, '
+      'updated_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0, ?, ?, ?, 1, ?, ?)',
+      [
+        documentId,
+        ledgerId,
+        docKind,
+        docNo,
+        docDate,
+        dueDate,
+        partyId,
+        entryId,
+        currencyCode,
+        subtotalMinor,
+        taxMinor,
+        totalMinor,
+        // The trigger replaces this with total − allocations the moment the first allocation
+        // lands; it is written as the full total so a bill paid at the counter is never
+        // briefly shown as settled.
+        totalMinor,
+        stamp.hlc.encode(),
+        _accounts.nodeId,
+        now,
+        now,
+      ],
+    );
+    return documentId;
   }
 
   /// Receives a payment **and** settles one invoice with it, in one transaction.

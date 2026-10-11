@@ -33,6 +33,10 @@
 library;
 
 import 'package:flutter/material.dart';
+
+// The colour rule and the money primitives live in `money_label.dart` (one place for both);
+// re-exported here because a screen that renders a ledger should not have to know that.
+export 'money_label.dart' show LedgerColumnKind, MoneyLabel, MoneyText, ledgerTone;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../format/formatting.dart';
@@ -41,37 +45,9 @@ import '../state/providers.dart';
 import '../state/queries.dart';
 import '../theme/theme.dart';
 import '../theme/tokens.dart';
+import 'money_label.dart';
 import 'skeletons.dart';
 import 'virtual_list.dart';
-
-/// Which column a row belongs to — the input to [ledgerTone].
-enum LedgerColumnKind {
-  /// Party sub-ledger under the receivable control: customers who owe the business.
-  receivable,
-
-  /// Party sub-ledger under the payable control: suppliers the business owes.
-  payable,
-
-  /// A cash, bank or wallet account: the amounts are literal cash movements.
-  cash,
-}
-
-/// The one colour decision for a ledger row. See the library comment for the table and the
-/// reasoning; this function exists so the party ledger, the cash book and any future report
-/// cannot each invent their own answer.
-Color ledgerTone(int amountMinor, LedgerColumnKind kind, KhataColors colors) {
-  switch (kind) {
-    case LedgerColumnKind.cash:
-      if (amountMinor > 0) return colors.moneyIn;
-      if (amountMinor < 0) return colors.moneyOut;
-      return colors.onCanvas;
-    case LedgerColumnKind.receivable:
-      // Only the receipt is coloured: it is the event the shopkeeper is looking for.
-      return amountMinor < 0 ? colors.moneyIn : colors.onCanvas;
-    case LedgerColumnKind.payable:
-      return amountMinor < 0 ? colors.moneyOut : colors.onCanvas;
-  }
-}
 
 /// One entry, as a row.
 ///

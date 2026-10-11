@@ -85,6 +85,11 @@ final class Consumer extends ConsumerWidget {
 }
 
 class ProviderScope extends StatefulWidget {
+  /// The container above the nearest `ProviderScope`. Used by widgets that have a
+  /// `BuildContext` but no `WidgetRef` (a modal route's builder, for instance).
+  static ProviderContainer containerOf(BuildContext context) =>
+      throw UnimplementedError('stub');
+
   const ProviderScope({
     super.key,
     this.overrides = const <Override>[],

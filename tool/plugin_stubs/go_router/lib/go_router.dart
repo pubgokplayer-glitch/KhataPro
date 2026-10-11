@@ -6,6 +6,8 @@
 /// plain routes, so only those members are declared.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 class RouteBase {
@@ -39,7 +41,7 @@ class GoRoute extends RouteBase {
 
 typedef GoRouterWidgetBuilder = Widget Function(BuildContext context, GoRouterState state);
 typedef GoRouterPageBuilder = Object? Function(BuildContext context, GoRouterState state);
-typedef GoRouterRedirect = Future<String?> Function(BuildContext context, GoRouterState state);
+typedef GoRouterRedirect = FutureOr<String?> Function(BuildContext context, GoRouterState state);
 typedef GoExceptionHandler = void Function(BuildContext context, GoRouterState state, GoRouter router);
 
 class GoRouter {
@@ -73,6 +75,9 @@ class GoRouter {
   final int redirectLimit;
 
   void go(String location, {Object? extra}) {}
+
+  /// Disposes the router and its navigator. Called from the root widget's `dispose`.
+  void dispose() {}
   Future<T?> push<T extends Object?>(String location, {Object? extra}) => Future<T?>.value();
   void pushReplacement(String location, {Object? extra}) {}
   void replace(String location, {Object? extra}) {}
@@ -110,6 +115,9 @@ class GoRouterState {
 
 extension GoRouterHelper on BuildContext {
   void go(String location, {Object? extra}) {}
+
+  /// Disposes the router and its navigator. Called from the root widget's `dispose`.
+  void dispose() {}
   Future<T?> push<T extends Object?>(String location, {Object? extra}) => Future<T?>.value();
   void pushReplacement(String location, {Object? extra}) {}
   bool canPop() => false;

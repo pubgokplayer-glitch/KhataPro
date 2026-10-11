@@ -32,6 +32,9 @@ class Element {
 }
 
 class BuildContext {
+  /// False once the element is unmounted. The screens check it after every `await` before
+  /// touching the context — the alternative is a callback that lands on a disposed element.
+  bool get mounted => true;
   const BuildContext();
   T? dependOnInheritedWidgetOfExactType<T>() => null;
   T? findAncestorStateOfType<T extends State>() => null;
@@ -760,9 +763,54 @@ class KeyedSubtree extends Widget {
 
 /// Frame callbacks, used exactly once in the widget layer: to check for a prefetch that no
 /// scroll notification would announce (content shorter than the viewport).
+/// A localisation delegate, as `package:flutter` declares it. The app passes the global ones
+/// from `flutter_localizations`; this is the parameter type.
+abstract class LocalizationsDelegate<T> {
+  const LocalizationsDelegate();
+}
+
+/// The window-level notifications a widget can observe. Only the one this app needs is
+/// declared: `didPushRouteInformation`, which is how a **warm** deep link arrives — the engine
+/// calls it when the app is already running, and without it a second reminder tapped from a
+/// message does nothing at all.
+mixin WidgetsBindingObserver {
+  Future<void> didPushRouteInformation(RouteInformation routeInformation) async {}
+  void didChangePlatformBrightness() {}
+  void didChangeLocales(List<Locale>? locales) {}
+}
+
+/// The uri the operating system handed the app, in the cold-start and the warm-start shapes.
+class RouteInformation {
+  const RouteInformation({this.uri, this.location});
+  final Uri? uri;
+  final String? location;
+}
+
+/// The engine's side of the world: the initial route name, the platform brightness, the
+/// metrics. A stub of the real `dart:ui` PlatformDispatcher, reached through
+/// `WidgetsBinding.instance`.
+class PlatformDispatcher {
+  const PlatformDispatcher({
+    this.defaultRouteName = '/',
+    this.platformBrightness = Brightness.light,
+  });
+  final String defaultRouteName;
+  final Brightness platformBrightness;
+}
+
+/// Starts the app. The one line every Flutter entry point has, declared because `main.dart`
+/// calls it and there is no other way to type-check `lib/main.dart`.
+void runApp(Widget app) {}
+
 class WidgetsBinding {
   const WidgetsBinding();
   static WidgetsBinding get instance => const WidgetsBinding();
+
+  /// The engine. `defaultRouteName` is the deep link on a cold start.
+  PlatformDispatcher get platformDispatcher => const PlatformDispatcher();
+
+  void addObserver(WidgetsBindingObserver observer) {}
+  void removeObserver(WidgetsBindingObserver observer) {}
   void addPostFrameCallback(void Function(Duration timeStamp) callback) {}
   void scheduleFrame() {}
 }
@@ -1130,6 +1178,29 @@ class ColorScheme {
 }
 
 class MaterialApp extends Widget {
+  /// The router flavour: `MaterialApp.router` takes a `routerConfig` instead of `home` and
+  /// `routes`, and the `GoRouter` owns navigation from there.
+  const MaterialApp.router({
+    super.key,
+    this.title = '',
+    this.theme,
+    this.darkTheme,
+    this.themeMode,
+    this.routerConfig,
+    this.builder,
+    this.locale,
+    this.supportedLocales,
+    this.localizationsDelegates,
+    this.debugShowCheckedModeBanner = true,
+    this.navigatorKey,
+    this.navigatorObservers,
+    this.restorationScopeId,
+  })  : home = null,
+        routes = null,
+        onGenerateRoute = null,
+        onGenerateInitialRoutes = null,
+        scrollBehavior = null;
+
   const MaterialApp({
     super.key,
     this.title = '',
@@ -1149,19 +1220,22 @@ class MaterialApp extends Widget {
     this.navigatorObservers,
     this.restorationScopeId,
     this.scrollBehavior,
-  });
+  }) : routerConfig = null;
   final String title;
   final ThemeData? theme;
   final ThemeData? darkTheme;
   final ThemeMode? themeMode;
   final Widget? home;
   final Map<String, WidgetBuilder>? routes;
+
+  /// Set by `MaterialApp.router`: a `GoRouter`.
+  final Object? routerConfig;
   final Widget Function(RouteSettings settings)? onGenerateRoute;
   final List<Widget Function(BuildContext, String)>? onGenerateInitialRoutes;
   final Widget Function(BuildContext context, Widget? child)? builder;
   final Locale? locale;
   final List<Locale>? supportedLocales;
-  final List<Object>? localizationsDelegates;
+  final List<LocalizationsDelegate<Object>>? localizationsDelegates;
   final bool debugShowCheckedModeBanner;
   final GlobalKey? navigatorKey;
   final List<Object>? navigatorObservers;
@@ -1196,12 +1270,17 @@ class MediaQueryData {
     this.textScaler = TextScaler.noScaling,
     this.viewPadding = EdgeInsets.zero,
     this.padding = EdgeInsets.zero,
+    this.viewInsets = EdgeInsets.zero,
     this.devicePixelRatio = 1,
   });
   final Size size;
   final TextScaler textScaler;
   final EdgeInsets viewPadding;
   final EdgeInsets padding;
+
+  /// The keyboard, when it is up. A form that ignores this draws its save button under the
+  /// keypad, which is the most common form bug on a phone.
+  final EdgeInsets viewInsets;
   final double devicePixelRatio;
   double get textScaleFactor => 1;
 }
@@ -1304,6 +1383,44 @@ class Card extends Widget {
   final double? elevation;
   final EdgeInsetsGeometry? margin;
   final Object? shape;
+}
+
+/// The bottom navigation bar (Material 3). Five destinations, fixed: this app has exactly
+/// five top-level places, and a tab that appears and disappears is a tab nobody learns.
+class NavigationBar extends Widget {
+  const NavigationBar({
+    super.key,
+    required this.destinations,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+    this.backgroundColor,
+    this.elevation,
+    this.labelBehavior,
+  });
+
+  final List<NavigationDestination> destinations;
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+  final Color? backgroundColor;
+  final double? elevation;
+  final Object? labelBehavior;
+}
+
+class NavigationDestination extends Widget {
+  const NavigationDestination({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.selectedIcon,
+    this.tooltip,
+    this.enabled = true,
+  });
+
+  final Widget icon;
+  final Widget? selectedIcon;
+  final String label;
+  final String? tooltip;
+  final bool enabled;
 }
 
 class Divider extends Widget {
@@ -1477,6 +1594,40 @@ class Switch extends Widget {
   final ValueChanged<bool>? onChanged;
 }
 
+enum TextInputAction { none, done, go, next, search, send }
+
+enum TextCapitalization { none, characters, sentences, words }
+
+/// `TextInputType` is deliberately not a const-can't-be-instantiated enum: the real one has
+/// a `numberWithOptions` factory, and the forms use it to ask for a decimal keypad.
+class TextInputType {
+  const TextInputType._({this.signed = false, this.decimal = false});
+  static const TextInputType text = TextInputType._();
+  static const TextInputType number = TextInputType._();
+  static const TextInputType phone = TextInputType._();
+  static const TextInputType emailAddress = TextInputType._();
+  static const TextInputType multiline = TextInputType._();
+  const factory TextInputType.numberWithOptions({
+    bool signed,
+    bool decimal,
+  }) = TextInputType._;
+  final bool signed;
+  final bool decimal;
+}
+
+/// A border for an input. `InputBorder.none` is the one the app uses: a form's fields get
+/// their definition from their label and spacing, never from four drawn edges.
+abstract class InputBorder {
+  const InputBorder();
+  static const InputBorder none = _NoInputBorder();
+  static const InputBorder underline = _NoInputBorder();
+  static const InputBorder outline = _NoInputBorder();
+}
+
+class _NoInputBorder extends InputBorder {
+  const _NoInputBorder();
+}
+
 class TextField extends Widget {
   const TextField({
     super.key,
@@ -1485,18 +1636,26 @@ class TextField extends Widget {
     this.keyboardType,
     this.inputFormatters,
     this.onChanged,
+    this.onSubmitted,
     this.autofocus,
     this.obscureText = false,
     this.textInputAction,
+    this.textCapitalization = TextCapitalization.none,
     this.style,
     this.maxLines,
+    this.textAlign,
+    this.enabled,
   });
   final Object? controller;
   final Object? decoration;
   final Object? keyboardType;
   final List<Object>? inputFormatters;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
   final bool? autofocus;
+  final TextAlign? textAlign;
+  final bool? enabled;
+  final TextCapitalization textCapitalization;
   final bool obscureText;
   final Object? textInputAction;
   final TextStyle? style;
@@ -1509,18 +1668,53 @@ class InputDecoration {
     this.hintText,
     this.prefixIcon,
     this.suffixIcon,
+    this.prefixText,
+    this.suffixText,
     this.border,
     this.errorText,
+    this.helperText,
     this.counterText,
+    this.filled,
+    this.fillColor,
+    this.contentPadding,
+    this.isDense,
   });
   final String? labelText;
   final String? hintText;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
-  final Object? border;
+  final String? prefixText;
+  final String? suffixText;
+  final InputBorder? border;
   final String? errorText;
+  final String? helperText;
   final String? counterText;
+  final bool? filled;
+  final Color? fillColor;
+  final EdgeInsetsGeometry? contentPadding;
+  final bool? isDense;
 }
+
+/// A modal sheet. The real one resolves with whatever its builder pops; so does this.
+Future<T?> showModalBottomSheet<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool isScrollControlled = false,
+  bool useSafeArea = false,
+  bool isDismissible = true,
+  bool enableDrag = true,
+  Color? backgroundColor,
+  Object? shape,
+}) =>
+    throw UnimplementedError('stub');
+
+/// A modal dialog, same contract. `showDialog<void>` is used for confirmations.
+Future<T?> showDialog<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool barrierDismissible = true,
+}) =>
+    throw UnimplementedError('stub');
 
 class TextEditingController {
   TextEditingController({String? text}) : text = text ?? '';

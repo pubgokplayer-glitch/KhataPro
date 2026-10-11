@@ -29,6 +29,7 @@ STUB_PACKAGES = [
     "nsd",
     "icloud_storage",
     "path_provider",
+    "flutter_localizations",
 ]
 DEFAULT_CONFIG = "/tmp/harness/.dart_tool/package_config.json"
 DEFAULT_OUT = "/tmp/harness/plugin_stubs_config.json"

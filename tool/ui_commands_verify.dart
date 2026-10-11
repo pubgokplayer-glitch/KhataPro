@@ -44,6 +44,7 @@ import 'dart:math' as math;
 import 'package:drift/drift.dart' show Variable;
 import 'package:riverpod/riverpod.dart';
 
+import '../lib/apps/deep_links.dart';
 import '../lib/core/security/sqlcipher_key.dart';
 import '../lib/core/utils/epoch_day.dart';
 import '../lib/data/db/dao/base_dao.dart' show AccountRole, DocKind;
@@ -52,6 +53,13 @@ import '../lib/data/db/database.dart';
 import '../lib/data/db/migration_runner.dart' show FileSystemAssetLoader;
 import '../lib/data/repositories/order_book.dart';
 import '../lib/ui/commands/book_commands.dart';
+import '../lib/ui/commands/entry_specs.dart';
+import '../lib/ui/commands/reminders.dart';
+import '../lib/ui/format/formatting.dart';
+import '../lib/ui/format/money_input.dart';
+import '../lib/ui/format/strings.dart';
+import '../lib/ui/routes.dart';
+import '../lib/ui/commands/entry_models.dart';
 import '../lib/ui/state/changes.dart';
 import '../lib/ui/state/providers.dart';
 import '../lib/ui/state/queries.dart';
@@ -171,6 +179,7 @@ Future<void> main(List<String> args) async {
     await _settlingClearsTheDebtWithoutASecondSale(container, partyId, today, month);
     await _refusalsChangeNothing(container, today, month, bogusId);
     await _anExpenseOnlyLeavesTheDrawer(container, today, month);
+    await _linksLandOnTheRightScreens(container, partyId, today);
   } finally {
     container.dispose();
     await bus.dispose();
@@ -649,10 +658,17 @@ Future<void> _anExpenseOnlyLeavesTheDrawer(
     'drawer $drawerBefore → ${_cashOf(container.read(cashAccountsProvider).value ?? const [])}',
   );
 
-  final flowNow = await _data(() => container.read(cashFlowProvider(month)));
+  // Polled, not read once. The bus coalesces a burst of changes into one notification, so the
+  // first read after the write can still return the *previous* emission — which is exactly how
+  // this check flaked once. `_until` waits on the same `AsyncValue` a chart widget would watch.
+  final flowCaughtUp = await _until(() {
+    final flow = container.read(cashFlowProvider(month)).value;
+    return flow != null &&
+        flow.fold(0, (sum, f) => sum + f.outflowMinor) == flowBefore + 120000;
+  });
   _check(
     'the chart counted it as money out, not money in',
-    flowNow.fold(0, (sum, f) => sum + f.outflowMinor) == flowBefore + 120000,
+    flowCaughtUp,
     'outflow was $flowBefore',
   );
 
@@ -669,4 +685,236 @@ Future<void> _anExpenseOnlyLeavesTheDrawer(
     inBook.any((m) => m.memo == 'rickshaw fare'),
     'memos=${inBook.map((m) => m.memo).whereType<String>().toList()}',
   );
+}
+
+// ── G · links, routes and the forms behind them ──────────────────────────────
+
+/// The user's third directive for this batch, in their words: *"the GoRouter setup for the 8
+/// screens + `khata_app.dart` must handle deep links, crucial for automated SMS/WhatsApp
+/// reminders and invoice sharing."*
+///
+/// A reminder is a message with a url in it, and the url is the half that has to work when the
+/// customer taps it a week later on a phone that has never had this app open. So the chain is
+/// asserted end to end, in the order it happens:
+///
+/// 1. [`parseDeepLink`](../lib/apps/deep_links.dart) — a pure function, tested for all three
+///    shapes the operating system can hand over (`khatapro://…`, an https app link, and the
+///    bare path Android gives a *running* app).
+/// 2. [`routeFor`](../lib/ui/routes.dart) — the mapping from a parsed link to the screen it
+///    opens. This is what the router uses, cold and warm, so asserting it here is asserting
+///    the router.
+/// 3. [`formFor`](…/lib/ui/routes.dart) — `?action=receive` opens the receipt form, and the
+///    spec it hands back is the *same* `receiptSpec` the ledger screen's own button builds.
+/// 4. The form actually posts: `onSave` is called with the numbers a shopkeeper would have
+///    typed, and the customer's balance moves by exactly that much. Nothing on this path is
+///    simulated; the only thing missing is a fingertip.
+Future<void> _linksLandOnTheRightScreens(
+  ProviderContainer container,
+  String partyId,
+  int today,
+) async {
+  _section('a reminder link opens the right screen, and the form behind it posts');
+
+  final money = container.read(moneyFormatProvider);
+  final strings = UiStrings(container.read(displayPrefsProvider).language);
+  final commands = container.read(bookCommandsProvider);
+
+  // Subscribe before reading: a `StreamProvider` family member that is only `read` sits in
+  // `AsyncLoading` for ever (the trap documented in section B). The screens `watch`, so this
+  // is the one thing a headless reader has to do by hand.
+  _keep(container.listen(partyProvider(partyId), (_, __) {}));
+
+  // ── the three shapes the OS can deliver ────────────────────────────────────
+  final scheme = Uri.parse('khatapro://party/$partyId');
+  final https = Uri.parse('https://$khataLinkHost/party/$partyId');
+  // The warm-start shape: Android hands over a path with no scheme at all.
+  final pathOnly = Uri.parse('/party/$partyId');
+
+  final fromScheme = parseDeepLink(scheme);
+  final fromHttps = parseDeepLink(https);
+  final fromPath = parseDeepLink(pathOnly);
+
+  _check(
+    'a custom-scheme link parses, and its first segment is not eaten by the host',
+    fromScheme?.partyId == partyId,
+    'got ${fromScheme?.partyId}',
+  );
+  _check(
+    'the https app link parses to the same party',
+    fromHttps?.partyId == partyId && fromHttps?.location == fromScheme?.location,
+  );
+  _check(
+    'and the bare path the OS hands a running app parses too',
+    fromPath?.partyId == partyId,
+    'got ${fromPath?.partyId}',
+  );
+
+  // ── routeFor is the router's own mapping ───────────────────────────────────
+  final screen = routeFor(fromScheme!);
+  _check(
+    'the link opens the party ledger, not the parties tab',
+    screen is GoScreen && screen.path == '/party/$partyId',
+    'got $screen',
+  );
+  _check(
+    'and the router is told the row is expected to exist in this book, so a foreign id gets '
+    'the "not in your khata" page instead of a blank screen',
+    screen is GoScreen && screen.expectsRow,
+  );
+
+  final tab = parseDeepLink(Uri.parse('khatapro://cash'))!;
+  _check(
+    'a tab link maps to a plain location — no wrapper, no extra route',
+    routeFor(tab) == KhataRoutes.cash,
+    'got ${routeFor(tab)}',
+  );
+
+  // ── the action, and why it is carried inside the location ──────────────────
+  final receive = parseDeepLink(Uri.parse('khatapro://party/$partyId?action=receive'))!;
+  _check(
+    'a "receive payment" link keeps its action in the location — the location is all a cold '
+    'start has, so dropping it there would open a screen that does nothing',
+    receive.location == '/party/$partyId?action=receive',
+    'got ${receive.location}',
+  );
+  final receiveScreen = routeFor(receive);
+  _check(
+    'the action survives routeFor as well',
+    receiveScreen is GoScreen && receiveScreen.action == LinkAction.receive,
+    'got $receiveScreen',
+  );
+  _check(
+    'a plain link carries no action',
+    routeFor(fromScheme) is GoScreen &&
+        (routeFor(fromScheme) as GoScreen).action == LinkAction.open,
+  );
+
+  // ── and the form the action opens ──────────────────────────────────────────
+  final forms = EntryForms(commands: commands!, money: money, strings: strings);
+  final linked = formFor(
+    action: LinkAction.receive,
+    forms: forms,
+    partyId: partyId,
+    partyName: 'linked party',
+  );
+  final sameAsTheButton = receiptSpec(
+    commands: commands,
+    money: money,
+    strings: strings,
+    partyId: partyId,
+    partyName: 'linked party',
+  );
+  _check(
+    '?action=receive opens the receipt form — the same one the ledger screen\'s button builds, '
+    'so a link cannot drift from the button',
+    linked != null &&
+        linked.title == sameAsTheButton.title &&
+        linked.partyKind == sameAsTheButton.partyKind,
+    'got ${linked?.title}',
+  );
+  _check(
+    'the linked form is locked to the party in the link, so the money cannot land on someone '
+    'else',
+    linked?.lockedPartyId == partyId,
+  );
+  _check(
+    'a money-OUT action opens nothing: the books have no "paid a supplier, no bill named" '
+    'command, so the link lands on the ledger where the bills are',
+    formFor(action: LinkAction.open, forms: forms, partyId: partyId) == null,
+  );
+
+  // ── a link that belongs to someone else, and one that says nothing ─────────
+  _check(
+    'a link for another app is ignored, not routed to an error page',
+    parseDeepLink(Uri.parse('https://example.com/party/$partyId')) == null,
+  );
+  _check(
+    'and a party link with no id is refused outright',
+    parseDeepLink(Uri.parse('khatapro://party')) == null,
+  );
+
+  // ── the message itself ─────────────────────────────────────────────────────
+  // The reminder is built from the *same* four values a notification would carry, and the url
+  // inside it has to be one this app can parse back — a message whose link is one character
+  // off is a message that looks fine and does nothing.
+  final balanceBefore =
+      (await _data(() => container.read(partyProvider(partyId))))?.netMinor ?? 0;
+  final body = buildReminder(
+    partyName: 'linked party',
+    balanceMinor: balanceBefore.abs(),
+    money: money,
+    link: partyLinkFor(partyId),
+    language: UiLanguage.urdu,
+    daysOverdue: 6,
+  );
+  final inMessage = Uri.tryParse(RegExp(r'\S+://\S+').firstMatch(body)?.group(0) ?? '');
+  _check(
+    'the reminder body carries a link this app parses back to the same party',
+    inMessage != null && parseDeepLink(inMessage)?.partyId == partyId,
+    'body: $body',
+  );
+  _check(
+    'and the Urdu reminder is Urdu, with the amount written the way the shopkeeper reads it',
+    body.contains('باقی ہے') && body.contains(money.balance(balanceBefore.abs())),
+  );
+  // The share sheet is the one thing this app does *not* own — so both intents have to carry
+  // the body through a url, which means encoding matters more than it looks.
+  final sms = smsUri(phone: normalisePhone('0300 1234567'), body: body);
+  final wa = whatsAppUri(phone: normalisePhone('0300 1234567'), body: body);
+  _check(
+    'the SMS intent carries the whole body, percent-encoded',
+    sms.scheme == 'sms' && sms.queryParameters['body'] == body,
+  );
+  _check(
+    'the WhatsApp intent carries it too, addressed by the same international number',
+    wa.host == 'wa.me' && wa.queryParameters['text'] == body,
+    'got $wa',
+  );
+  _check(
+    'a local number becomes the E.164 number the intents need',
+    normalisePhone('0300 1234567') == '+923001234567',
+    'got ${normalisePhone('0300 1234567')}',
+  );
+
+  // ── the round trip that matters: the numbers travel too ────────────────────
+  // Everything above is string work. This is the part that changes the books: the values a
+  // filled-in form holds go through `onSave`, and the customer's balance must move by the
+  // amount that was on screen — no re-parse, no rounding, no second look at the display
+  // settings in between.
+  final typed = amountForEditing(250000); // "2,500.00"
+  final back = parseAmountMinor(typed);
+  _check(
+    'an amount survives the trip through the amount field',
+    back == 250000,
+    '"$typed" → $back',
+  );
+
+  final outcome = await linked!.onSave(
+    EntrySheetValues(
+      amountMinor: back!,
+      entryDate: today,
+      toBank: false,
+      partyId: partyId,
+      memo: 'from a link',
+    ),
+  );
+  _check('the linked form posts', outcome.ok, 'refused: ${outcome.message}');
+
+  final settled = await _until(
+    () => container.read(partyProvider(partyId)).value?.netMinor != balanceBefore,
+  );
+  final balanceAfter =
+      (await _data(() => container.read(partyProvider(partyId))))?.netMinor ?? 0;
+  _check(
+    'and the customer\'s balance moved by exactly the amount the form held — a receipt takes '
+    'the receivable *down*, so the sign follows the double-entry side, not the cash direction',
+    settled && balanceAfter == balanceBefore - 250000,
+    '$balanceBefore → $balanceAfter (expected ${balanceBefore - 250000})',
+  );
+
+  // The memo is what makes the row readable in the ledger a month later: "from a link" is how
+  // a shopkeeper tells a link-driven receipt from one typed at the counter.
+  final line = (await _data(() => container.read(cashBookProvider(CashWindow.thisMonth(today)))))
+      .where((l) => l.memo == 'from a link');
+  _check('the cash book shows it, with the memo the form carried', line.isNotEmpty);
 }

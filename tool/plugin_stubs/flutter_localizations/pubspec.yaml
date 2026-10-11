@@ -1,0 +1,7 @@
+name: flutter_localizations
+version: 0.0.0
+publish_to: none
+environment:
+  sdk: ^3.10.0
+dependencies:
+  flutter: any

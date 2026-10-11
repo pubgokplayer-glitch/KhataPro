@@ -149,6 +149,12 @@ final class BookCommands {
 
   /// A credit sale with a document behind it: this is what the bill book, the aging report
   /// and an SMS reminder all read. Use this one when the goods leave on credit.
+  ///
+  /// **Sales documents only.** A supplier bill has its own command ([recordBill]) because the
+  /// journal is not the same journal: a sale credits revenue, a bill debits inventory. Routing
+  /// a `purchaseBill` through here would post revenue for something the shop bought — the kind
+  /// of number that reconciles to a plausible total and is wrong in every line — so the
+  /// command refuses the doc kind rather than trusting its caller.
   Future<CommandOutcome> recordInvoice({
     required int entryDate,
     required int grossMinor,
@@ -161,6 +167,13 @@ final class BookCommands {
     String? docNo,
     String? memo,
   }) async {
+    if (docKind != DocKind.saleInvoice) {
+      return CommandOutcome.refused(
+        message: 'A supplier bill is not a sale: use the bill form, which posts the purchase '
+            'to what you owe your supplier instead of to your sales.',
+        code: 'APP-2',
+      );
+    }
     return _run(
       money: money,
       action: () => _book.postInvoice(
@@ -256,6 +269,74 @@ final class BookCommands {
     );
   }
 
+  /// A supplier bill: goods or services in, money owed out.
+  ///
+  /// [debitRole] is what was received — `inventory` by default, an expense role for a service
+  /// (a rickshaw fare, an electricity bill). The distinction lives in the chart of accounts, so
+  /// the stock screen and the expense report both stay right.
+  Future<CommandOutcome> recordBill({
+    required int entryDate,
+    required int grossMinor,
+    required int amountPaidMinor,
+    required String partyId,
+    required MoneyFormat money,
+    int docKind = DocKind.purchaseBill,
+    int taxMinor = 0,
+    int? dueDate,
+    String debitRole = AccountRole.inventory,
+    bool fromBank = false,
+    String? docNo,
+    String? memo,
+  }) async {
+    return _run(
+      money: money,
+      action: () => _book.postBill(
+        entryDate: entryDate,
+        grossMinor: grossMinor,
+        amountPaidMinor: amountPaidMinor,
+        partyId: partyId,
+        taxMinor: taxMinor,
+        docKind: docKind,
+        dueDate: dueDate,
+        debitRole: debitRole,
+        fromBank: fromBank,
+        docNo: docNo,
+        memo: memo,
+      ),
+      describe: (receipt) {
+        final total = money.format(receipt.totalMinor);
+        final no = receipt.entryNo;
+        return 'Bill $no · $total';
+      },
+      documentNoOf: _docNo,
+    );
+  }
+
+  /// Pays a supplier bill — money out, allocated against that bill.
+  Future<CommandOutcome> settleBill({
+    required int entryDate,
+    required int amountMinor,
+    required String documentId,
+    required MoneyFormat money,
+    bool fromBank = false,
+    String? memo,
+  }) async {
+    return _run(
+      money: money,
+      action: () => _book.settleBill(
+        entryDate: entryDate,
+        amountMinor: amountMinor,
+        documentId: documentId,
+        fromBank: fromBank,
+        memo: memo,
+      ),
+      describe: (receipt) =>
+          'Paid ${money.format(receipt.totalMinor)}${fromBank ? ' by bank' : ' from the till'}',
+      documentOverride: documentId,
+      documentNoOf: _docNo,
+    );
+  }
+
   /// Creates a party. There is no journal entry in this one, so it has no receipt — but it is
   /// still a write that must land in the op-log for a peer to see, which is why it goes
   /// through the DAO rather than a bare INSERT.
@@ -292,6 +373,19 @@ final class BookCommands {
     if (number == null || message.contains(number)) return message;
     return '$message · $number';
   }
+
+  /// The full integrity sweep, for the "check my books" button.
+  ///
+  /// Deliberately *not* wrapped in a [CommandOutcome]: nothing is written, the report *is* the
+  /// answer, and every finding carries the severity the schema assigned it. A refusal shape
+  /// here would flatten fifteen critical classes into one sentence.
+  Future<CommitReport> audit({CommitCheck check = CommitCheck.full}) => _book.audit(check: check);
+
+  /// Rebuilds every cached total from the journal.
+  ///
+  /// The one repair action that is always safe: the caches are derived, the journal is the
+  /// truth, and a restore from a backup is the case where they can drift.
+  Future<void> rebuildCaches() => _book.rebuildCaches();
 
   /// The document number behind an id, for the toast. One indexed read, after the write has
   /// already committed — never inside the transaction, where it would extend the lock for a

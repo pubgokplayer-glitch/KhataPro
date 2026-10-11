@@ -98,3 +98,16 @@ class AssetManifest {
 
   List<String> listAssets() => _assets;
 }
+
+/// The system clipboard. The reminder sheet uses this instead of a messaging plugin: the
+/// message is the part the app has to get right (language, amount, link), and the *sending* is
+/// something the phone already does.
+class ClipboardData {
+  const ClipboardData({required this.text});
+  final String text;
+}
+
+abstract final class Clipboard {
+  static Future<void> setData(ClipboardData data) async {}
+  static Future<ClipboardData?> getData() async => null;
+}

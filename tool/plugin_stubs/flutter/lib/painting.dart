@@ -13,6 +13,15 @@ library;
 
 // ── dart:ui stand-ins ────────────────────────────────────────────────────────
 
+/// The handful of framework colours a Material widget defaults to. The app's own palette lives
+/// in `lib/ui/theme/tokens.dart`; these two exist because a `GridView`'s child defaults and a
+/// sheet's scrim are the framework's, not the app's.
+abstract final class Colors {
+  static const Color transparent = Color(0x00000000);
+  static const Color white = Color(0xFFFFFFFF);
+  static const Color black = Color(0xFF000000);
+}
+
 class Color {
   const Color(this.value);
   const Color.fromARGB(int alpha, int red, int green, int blue) : value = 0;
@@ -99,32 +108,38 @@ class BorderRadius {
 }
 
 class EdgeInsets extends EdgeInsetsGeometry {
-  const EdgeInsets.all(double value) : _value = value;
-  const EdgeInsets.symmetric({double horizontal = 0, double vertical = 0})
-      : _value = horizontal + vertical;
+  const EdgeInsets.fromLTRB(this.left, this.top, this.right, this.bottom);
   const EdgeInsets.only({
-    double left = 0,
-    double top = 0,
-    double right = 0,
-    double bottom = 0,
-  }) : _value = left + top + right + bottom;
-  const EdgeInsets.fromLTRB(double left, double top, double right, double bottom)
-      : _value = left + top + right + bottom;
-  static const EdgeInsets zero = EdgeInsets.all(0);
-  final double _value;
+    this.left = 0,
+    this.top = 0,
+    this.right = 0,
+    this.bottom = 0,
+  });
+  const EdgeInsets.all(double value)
+      : left = value,
+        top = value,
+        right = value,
+        bottom = value;
+  const EdgeInsets.symmetric({double horizontal = 0, double vertical = 0})
+      : left = horizontal,
+        top = vertical,
+        right = horizontal,
+        bottom = vertical;
 
-  /// Horizontal inset. Exposed so the field is read: the widget layer mirrors padding
-  /// under RTL, and a stub with a dead field is a lint, not a signal.
-  double get horizontal => _value;
+  static const EdgeInsets zero = EdgeInsets.all(0);
+
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
 }
 
+/// The base of the padding/inset types. Subclasses carry the values; widget parameters are
+/// typed as this so a caller can pass either a physical or a directional inset.
 abstract class EdgeInsetsGeometry {
   const EdgeInsetsGeometry();
 }
 
-/// Direction-aware insets: `start`/`end` mirror under RTL, `left`/`right` do not. The
-/// widget layer uses these for anything that has to look right in Urdu, which is
-/// everything with padding.
 class EdgeInsetsDirectional extends EdgeInsetsGeometry {
   const EdgeInsetsDirectional.fromSTEB(
     double start,

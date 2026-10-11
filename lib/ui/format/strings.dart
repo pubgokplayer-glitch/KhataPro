@@ -25,6 +25,8 @@
 ///   it, which is exactly what it would be.
 library;
 
+import '../../core/utils/epoch_day.dart';
+import '../format/formatting.dart';
 import '../state/providers.dart';
 
 /// The screen strings for one language.
@@ -53,6 +55,8 @@ final class UiStrings {
 
   String get todaysSales => _pick("Today's sales", 'آج کی فروخت');
   String get thisMonthSales => _pick('This month', 'اس ماہ کی فروخت');
+  String get thisMonth => _pick('This month', 'اس ماہ');
+  String get thisYear => _pick('This year', 'اس سال');
   String get thisMonthProfit => _pick('Profit this month', 'اس ماہ کا منافع');
   String get cashAndBank => _pick('Cash & bank', 'نقد اور بینک');
   String get receivables => _pick('Customers owe', 'گاہکوں سے لینا');
@@ -99,7 +103,40 @@ final class UiStrings {
   String get customer => _pick('Customer', 'گاہک');
   String get supplier => _pick('Supplier', 'سپلائر');
   String get search => _pick('Search', 'تلاش');
+  String get searchParty => _pick('Search a party by name or phone', 'نام یا فون سے پارٹی ڈھونڈیں');
+  String get noPartiesYet => _pick('No parties yet. Add one with the + button.', 'ابھی کوئی پارٹی نہیں۔ نیچے + سے شامل کریں۔');
+  String get noMatch => _pick('Nothing matches that.', 'اس نام سے کچھ نہیں ملا۔');
+  String get today => _pick('Today', 'آج');
+  String get yesterday => _pick('Yesterday', 'کل');
+  String get saving => _pick('Saving…', 'محفوظ ہو رہا ہے…');
+  String get enterAValidAmount => _pick('Enter an amount like 1250 or 1250.50', 'رقم لکھیں، مثلاً ۱۲۵۰ یا ۱۲۵۰.۵۰');
+  String get viaBank => _pick('Through the bank', 'بینک کے ذریعے');
+  String couldNotLoad(Object error) => _pick('Could not load this: $error', 'یہ فہرست لوڈ نہیں ہوئی: $error');
   String get dueDate => _pick('Due date', 'ادائیگی کی تاریخ');
+
+  String get saleHint => _pick(
+      'Counter cash sale: the money is in the drawer the moment you save.',
+      'نقد فروخت: محفوظ کرتے ہی رقم گلیے میں آ جائے گی۔');
+  String get invoiceHint => _pick(
+      'On credit: your customer owes this until you receive it. It will appear in reminders.',
+      'اُدھار: وصولی تک یہ رقم گاہک کے ذمے رہے گی، اور یاد دہانی کی فہرست میں آئے گی۔');
+  String get receiptHint => _pick(
+      'Money received against the balance, without picking a bill.',
+      'بیلنس کے خلاف وصولی، بغیر کسی بل کا انتخاب۔');
+  String get expenseHint => _pick(
+      'Money that leaves the drawer or the bank.',
+      'گلیے یا بینک سے جانے والی رقم۔');
+  String get billHint => _pick(
+      'Goods or services bought on credit: this is what you owe the supplier.',
+      'اُدھار پر خریدا گیا مال یا سروس: یہ رقم سپلائر کو دینی ہے۔');
+  String get receivePayment => _pick('Receive payment', 'وصولی درج کریں');
+  String get paySupplier => _pick('Pay the supplier', 'سپلائر کو ادائیگی');
+  String settleInvoiceHint(String? party, String balance) => _pick(
+      '${party == null ? 'Receiving' : '$party owes'} $balance.',
+      '${party ?? 'گاہک'} سے $balance وصول ہونا ہے۔');
+  String settleBillHint(String? party, String balance) => _pick(
+      '${party == null ? 'Paying' : '$party is owed'} $balance.',
+      '${party ?? 'سپلائر'} کو $balance دینے ہیں۔');
 
   // ── bills, stock, staff ──────────────────────────────────────────────────
 
@@ -120,6 +157,60 @@ final class UiStrings {
   String get noMovements => _pick('No movements for this item yet', 'اس آئٹم کی کوئی آمد و رفت نہیں');
   String get advance => _pick('Advance', 'پیشگی');
   String get salary => _pick('Salary', 'تنخواہ');
+
+  // ── lists, filters, banners ──────────────────────────────────────────────
+
+  String get customers => _pick('Customers', 'گاہک');
+  String get suppliers => _pick('Suppliers', 'سپلائرز');
+  String get both => _pick('Both', 'دونوں');
+  String get addPartyHint => _pick('Add the person you are dealing with.', 'جس سے لین دین ہے اس کا نام شامل کریں۔');
+  String get tryAnotherName => _pick('Try another name or part of a phone number.', 'دوسرا نام یا فون نمبر کا کوئی حصہ لکھیں۔');
+  String get last7Days => _pick('7 days', '۷ دن');
+  String get noCashMovement => _pick('No cash movement in this period', 'اس عرصے میں کوئی آمد و رفت نہیں');
+  String get noDebtorsHint =>
+      _pick('Every bill has been settled.', 'ہر بل ادا ہو چکا ہے۔');
+  String get nothingToCollect => _pick('Nothing to collect', 'وصولی کے لیے کچھ نہیں');
+  String get noBillsToPay => _pick('No bills to pay', 'کوئی بل واجب الادا نہیں');
+  String get allSettled => _pick('Everything here is settled.', 'یہاں سب ادا شدہ ہے۔');
+  String get switchToPayables => _pick('Customers / suppliers', 'گاہک / سپلائر');
+  String get lowStock => _pick('Low stock', 'کم اسٹاک');
+  String get nothingInStock =>
+      _pick('No items yet', 'ابھی کوئی آئٹم نہیں');
+  String get stockComesFromBills =>
+      _pick('Items appear here once a bill or a sale names them.', 'بل یا فروخت کے بعد آئٹم یہاں آئے گا۔');
+  String get noMovementsHint =>
+      _pick('Nothing has moved for this item yet.', 'اس آئٹم کی ابھی کوئی آمد و رفت نہیں۔');
+  String get noStaffYet => _pick('No staff on the book', 'عملے کا کوئی اندراج نہیں');
+  String get addStaffHint =>
+      _pick('Add the people who work with you as parties, and pay them from here.', 'ساتھ کام کرنے والوں کو پارٹی کے طور پر شامل کریں اور یہیں ادائیگی کریں۔');
+  String get paySalary => _pick('Pay salary', 'تنخواہ دیں');
+  String get sendReminder => _pick('Send a reminder', 'یاد دہانی بھیجیں');
+  String get billNo => _pick('Bill number', 'بل نمبر');
+  String get moneyMoved => _pick('Money moved', 'رقم کی آمد و رفت');
+  String unpostedEntries(int count) => _pick(
+      '$count entries are not posted yet', '$count اندراجات ابھی پوسٹ نہیں ہوئے');
+  String peersPaired(int count) => _pick(
+      '$count ${count == 1 ? 'phone is' : 'phones are'} paired with this book',
+      '$count فون اس کھاتے سے جڑے ہیں');
+  String conflictsWaiting(int count) => _pick(
+      '$count merged ${count == 1 ? 'change' : 'changes'} to look at', '$count ضم شدہ تبدیلیاں دیکھنی ہیں');
+  String booksAreClean(int accounts, int ms) => _pick(
+      'No problems found. $accounts accounts checked in $ms ms.',
+      'کوئی مسئلہ نہیں ملا۔ $accounts کھاتے $ms ملی سیکنڈ میں جانچے گئے۔');
+  String booksHaveProblems(int count) => _pick(
+      '$count findings — the numbers on screen should not be trusted until these are fixed.',
+      '$count مسائل ملے — ٹھیک ہونے تک اسکرین کے نمبروں پر بھروسہ نہ کریں۔');
+  String lastBackup(int atMs) => isUrdu
+      ? 'آخری تصدیق شدہ بیک اپ: ${DateText.relative(_backupDay(atMs), today: EpochDay.today(), digits: DigitStyle.urdu)}'
+      : 'Last verified backup: ${DateText.relative(_backupDay(atMs), today: EpochDay.today())}';
+  String get linkNotInBook => _pick(
+      'This link does not open anything in this book.',
+      'یہ لنک اس کھاتے میں کسی جگہ نہیں کھولتا۔');
+  String get goToDashboard => _pick('Go to the dashboard', 'ڈیش بورڈ پر جائیں');
+  String invitationReady(String ticket) => _pick(
+      'Pairing invitation ready: $ticket', 'جوڑنے کی دعوت تیار ہے: $ticket');
+  String get copyInvitation => _pick('Copy', 'کاپی');
+  String get rebuildDone => _pick('Totals rebuilt from the journal.', 'ٹوٹل جرنل سے دوبارہ بن گئے۔');
 
   // ── settings & status ────────────────────────────────────────────────────
 
@@ -154,3 +245,9 @@ final class UiStrings {
   String get rebuildCaches => _pick('Rebuild totals', 'ٹوٹل دوبارہ بنائیں');
   String get done => _pick('Done', 'مکمل');
 }
+
+/// The epoch-day of a wall-clock timestamp, for the "last backup 3 days ago" line. **Local**
+/// time, because a backup taken at 11 pm in Rahim Yar Khan is "yesterday" to the person reading
+/// it, and because it has to agree with the day headers in the ledger — which are local days.
+int _backupDay(int millisecondsSinceEpoch) =>
+    EpochDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(millisecondsSinceEpoch));
