@@ -131,13 +131,30 @@ drops sockets, answers `308` with partial ranges and returns
 
 ### iCloud
 
-A ubiquity container, no OAuth, no session URIs — so resumption is done with a
-`.part` file that is appended to and renamed on completion. Two properties fall out
-of that, and both are asserted: **a half-written pack is invisible to `list()`** (it
-can never be offered for restore), and abandoned partials are swept after six hours
-so debris does not quietly consume the user's iCloud quota. `availableBytes()`
-returns null on iOS because iOS does not expose iCloud quota to apps — the doc
-comment says so rather than inventing a number.
+No OAuth and no session URIs, and — this is the part that had to be learned from the
+plugin's source rather than from its name — **no container path either**.
+`icloud_storage` does not hand out a directory to write into: it lists, uploads,
+downloads by destination path, moves and deletes *whole files*, and `upload()`
+returns before the file reaches Apple's servers.
+
+So the resumption strategy is built on what the plugin actually does:
+
+* **staging, not appending.** `IcloudPluginContainer` writes into a local staging
+  directory (app support), and only calls `upload()` when a whole pack is on disk.
+  A half-written pack therefore never reaches the container at all, which is a
+  stronger guarantee than hiding a `.part` file from `list()` — and abandoned
+  staged bytes are swept, so debris cannot quietly consume the user's iCloud quota.
+* **`isUploaded` is reported separately from "exists on this phone".** A pack that is
+  staged but not yet off the device is a *different state* from one that is backed
+  up, and the backup status line says which. Conflating them is how a user believes
+  they are backed up when they are not.
+* **`move` onto an existing target throws `E_FNF`** — the plugin's own quirk. The
+  commit path deletes-then-moves rather than assuming a rename overwrites.
+* `availableBytes()` returns null on iOS because iOS does not expose iCloud quota to
+  apps; the doc comment says so rather than inventing a number.
+
+§5.3 defect 14 is what this section used to say, wrongly, and the correction is the
+whole paragraph above.
 
 ## 3 · LAN sync over WebRTC
 

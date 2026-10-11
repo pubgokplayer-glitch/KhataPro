@@ -81,9 +81,11 @@ khata_pro/
 ├─ lib/data/db/             ← Drift database, DAOs, hand-written migrations
 ├─ lib/sync/{transport,protocol,backup}
 ├─ lib/platform/{drive,icloud}
+├─ lib/ui/{state,lists,charts,format,theme}   ← D4: everything a screen reads
 ├─ test/sql/                ← schema contract tests (run on desktop SQLite in CI)
 ├─ tool/                    ← setup_native.sh · fetch_fonts.sh · verify_schema.sh
 ├─ docs/DATA_LAYER.md       ← D2: the data layer and its proofs
+├─ docs/UI.md               ← D4: the reactive contract, and what is left
 └─ docs/ARCHITECTURE.md     ← the decisions, with the math
 ```
 
@@ -91,12 +93,22 @@ khata_pro/
 
 ```
 bash tool/verify_schema.sh --bench
-  ▶ migrations 001…008 apply, re-apply cleanly   (219 objects, 37 accounts)
+  ▶ all 11 migrations apply, re-apply cleanly    (221 objects, 37 accounts)
   ▶ contract tests                               35/35 hold
   ▶ integrity sweep                              0 critical findings
   ▶ 20 000 entries / 51 009 postings            51.9 MB, Σ(net) over all accounts = 0
       dashboard 4.1 ms · trial balance 0.1 ms · post an invoice 0.35 ms
       FTS search 1.1 ms · write throughput 9 702 lines/s (all triggers on)
+```
+
+The Dart side, all runnable in this workspace without a Flutter SDK
+(`tool/bootstrap_harness.sh` sets up the harness described in `docs/DATA_LAYER.md`):
+
+```
+crypto 72/72 · aes 27/27 · crdt 55/55 · sync 133/133 · security 54/54
+data layer 81/81 · sql contracts 35/35 · flutter test 16/16
+ui logic 174/174 · ui + database integration 53/53      (docs/UI.md)
+dart analyze: no issues found over lib/ and the new tool
 ```
 
 ## 6. Documentation index
@@ -109,6 +121,9 @@ bash tool/verify_schema.sh --bench
   prompts), the KPB1 backup pack, resumable uploads, Drive/iCloud, WebRTC LAN sync,
   QR pairing, flow control, SDP surgery, and the fourteen defects the harness and
   the pinned plugin APIs caught.
+* `docs/UI.md` — **Deliverable 4**: the reactive contract (`ChangeBus` → providers →
+  screens), the four wiring traps that cost real debugging time, the six defects this
+  stage found in shipped code, and what only a device can settle.
 * `docs/PLATFORM_SETUP.md` — the Android manifest, iOS entitlements and Google Cloud
   steps a release build needs, plus exactly which files have not been compiled here.
 * `docs/REPO_AND_BACKUP.md` — the 128 MB workspace budget, the cleanup script, and how

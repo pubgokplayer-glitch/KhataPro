@@ -207,9 +207,12 @@ to the Runner target (File ▸ Add Files), or drop it into the project with a Ru
 The same trap applies to two other new files that are *not* part of the app target:
 
   * `lib/platform/icloud/icloud_plugin_container.dart` — Dart, compiled by Flutter
-    normally, but only reachable once something constructs it (see `docs/SYNC.md` §7:
-    the wiring from the sync screen into the backup layer is **not written yet**, so
-    none of this runs on a device today);
+    normally, but only reachable once something constructs it. Nothing constructs it
+    yet: the wiring from the sync screen into the backup layer arrives with the widget
+    layer, which is the remaining piece of Deliverable 4 (`docs/UI.md` §6), so none of
+    this runs on a device today. The iCloud path is also the one part of Deliverable 3
+    that no Dart suite can exercise (there is no iCloud on Linux) — `docs/SYNC.md` §6
+    lists what a device has to answer.
   * `android/app/src/main/kotlin/com/khata/pro/MainActivity.kt` — picked up by Gradle
     automatically, no action needed. Listed here so the asymmetry is explicit.
 

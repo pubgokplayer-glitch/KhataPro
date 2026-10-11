@@ -10,7 +10,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-echo "▶ 1/4 · applying migrations 001…008 to a scratch file"
+MIGRATIONS=$(ls "$ROOT/assets/sql/migrations"/*.sql | wc -l | tr -d ' ')
+echo "▶ 1/4 · applying all $MIGRATIONS migrations to a scratch file"
 python3 - <<'PY'
 import glob, pathlib, sqlite3, sys
 db = "/tmp/khata_schema_check.sqlite"

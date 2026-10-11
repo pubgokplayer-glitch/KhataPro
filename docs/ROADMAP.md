@@ -110,16 +110,38 @@ against signature stubs transcribed from the pinned package versions
 | 7 | The mDNS listener was never removed from the `ChangeNotifier`, leaking an `NsdManager` registration per visit to the sync screen | fixed |
 | 8 | The iCloud store was built around a container path the plugin does not expose, and treated `upload()` as complete when it only means the local container copy exists | fixed |
 
-## ⏭ Deliverable 4 — UI (Impeller, EN + UR)
+## ◐ Deliverable 4 — UI (Impeller, EN + UR) — **state layer delivered, widget layer next**
 
-* Design system: typography (Inter + Noto Nastaliq Urdu, RTL-correct),
-  4/8 pt spacing scale, 12 semantic colours, light/dark.
-* Screens in order of user value: Dashboard (today's sales, receivables
-  collection rate), Party ledger (paged running balance), New sale (numpad-first
-  flow, the 3-tap invoice), Purchases, Expenses, Items/stock, Reports
-  (trial balance, P&L, party statement PDF), Settings/security.
-* Performance guardrails enforced by review + a golden test: no `saveLayer`, no
-  layout in `build` hot paths, `RepaintBoundary` on charts, `const` everywhere.
+The half that can be proven in this workspace is done and green; the half that needs
+Flutter is listed, file by file, in `docs/UI.md` §6.
+
+**Delivered and verified**
+
+| # | Item | Where | Evidence |
+|---|---|---|---|
+| 1 | Design tokens (12 semantic colours, 4/8 pt scale, type ramp, Urdu/RTL) | `lib/ui/theme/tokens.dart` | palette audit in `ui_verify` (100 checks of contrast/ordering/dark-light pairing) |
+| 2 | Money/date/percent formatting, lakh–crore grouping, Urdu digits, `Dr`/`Cr` | `lib/ui/format/formatting.dart` | `ui_verify` group 1–2 |
+| 3 | Chart arithmetic — scales, nice ticks, min/max downsampling, bars, hit testing, cash-flow series | `lib/ui/charts/chart_math.dart` | `ui_verify` groups 3–6, **no chart plugin** (CustomPaint only) |
+| 4 | Paging + the ledger walk with an integrity verdict | `lib/ui/lists/paged_list.dart` | 30 060-item and 4 000-row walks, back-scroll, `ui_verify` groups 7–8 |
+| 5 | Every read the screens make, as named SQL | `lib/ui/state/queries.dart` | **executed against a real database** in `ui_db_verify` |
+| 6 | The reactive state: `ChangeBus` wired to the database's commit, providers, `LedgerController` | `lib/ui/state/{changes,providers,ledger_source}.dart` | `ui_db_verify`, 53 checks, real writes + real Riverpod container |
+
+**Found while building it** — six defects, four of them user-visible, four in code that was
+already "delivered": a party sub-ledger code that made **any party with a name longer than
+19 characters impossible to create**; a dashboard view that could not see credit sales
+(migration 011); a stock query selecting a column that does not exist; a change signal
+Riverpod silently dropped; a missing `ref.mounted` guard; and `documents` having no writer
+at all, which is what `OrderBook.postInvoice` now fixes. `docs/UI.md` §5 has the table.
+
+**Next, in order** (`docs/UI.md` §6 for the file list and the constraints):
+
+* `lib/apps/khata_app.dart`, `lib/ui/theme/theme.dart` — the app shell;
+* `lib/ui/widgets/{biometric_gate,virtual_list,ledger_view,live_charts,skeletons}.dart`;
+* the eight screens — Dashboard, Party list, Party ledger, Cash book, Stock book, Staff
+  book, Bill book, Settings — each a thin watch-render-command layer over §5;
+* `lib/ui/commands/book_commands.dart`, the write side;
+* goldens + frame-time checks on a device, which is also where Impeller and Nastaliq
+  shaping get their first real test.
 
 ## ⏭ Deliverable 5 — more sync surface
 

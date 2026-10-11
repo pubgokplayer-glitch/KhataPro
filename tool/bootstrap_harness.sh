@@ -183,12 +183,26 @@ PY
 # (there is no lib/ next to bin/), and the resulting wall of "undefined name" errors
 # looks exactly like a broken crypto implementation. Importing the tool by path keeps
 # its relative imports pointing at the real working tree.
-for tool in crypto aes; do
+for tool in crypto aes crdt; do
   cat > "$HARNESS/${tool}_run.dart" <<DART
 import '../../../home/user/khata_pro/tool/${tool}_verify.dart' as tool;
 void main(List<String> args) => tool.main(args);
 DART
 done
+
+# `crdt_verify`'s main is synchronous (it counts entropy sources rather than driving a
+# database), so its shim must not promise a Future it never returns.
+cat > "$HARNESS/crdt_run.dart" <<'DART'
+import '../../../home/user/khata_pro/tool/crdt_verify.dart' as tool;
+void main(List<String> args) => tool.main(args);
+DART
+
+# The D4 integration suite opens a real database *and* a real Riverpod container, so it
+# needs the native-asset build hooks that only `dart run <script inside a package>` gets.
+cat > "$HARNESS/ui_db_run.dart" <<'DART'
+import '../../../home/user/khata_pro/tool/ui_db_verify.dart' as tool;
+Future<void> main(List<String> args) => tool.main(args);
+DART
 
 # ── the analyzer's view of the Flutter-only layer ────────────────────────────
 # The five files that import Flutter or a plugin cannot be *run* here, but they can be
@@ -202,6 +216,8 @@ Harness ready at $HARNESS
 
   cd $HARNESS                                  # \`dartx\` sets PUB_CACHE/TMPDIR for you
   ./dartx run bin/run_layer.dart --asset-root=$PROJECT      # 81 checks
+  ./dartx run ui_db_run.dart --asset-root=$PROJECT          # 53 checks, real DB + Riverpod
+  ./run_tool.sh $PROJECT/tool/ui_verify.dart --asset-root=$PROJECT   # 174 checks, no DB
   ./run_tool.sh $PROJECT/tool/security_verify.dart          # 54 checks
   ./run_tests.sh                                            # 16 repo tests + smoke
 
@@ -210,9 +226,10 @@ Harness ready at $HARNESS
   fails inside a Flutter app, and a bare \`dart run\` here drops the khata_pro
   mapping that ./run_tool.sh reinstates.
 
-  Tools that import \`../lib/...\` relatively (crypto_verify, aes_verify) run as
+  Tools that import \`../lib/...\` relatively (crypto_verify, aes_verify, crdt_verify) run as
     ./dartx crypto_run.dart $PROJECT/assets/testdata/crypto_vectors.json
     ./dartx aes_run.dart    $PROJECT/assets/testdata/aes_vectors.json
+    ./dartx crdt_run.dart
 
   The Flutter-only files cannot be run or tested here, but they can be type-checked
   against the pinned package APIs transcribed into $PROJECT/tool/plugin_stubs:

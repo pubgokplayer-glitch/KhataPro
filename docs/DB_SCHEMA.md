@@ -1,6 +1,6 @@
 # KhataPro — Database Schema Reference
 
-**39 base tables (+ 5 FTS5 shadow tables) · 18 views · 71 indexes · 33 triggers · 10 migrations.**
+**39 base tables (+ 5 FTS5 shadow tables) · 18 views · 71 indexes · 33 triggers · 11 migrations.**
 15 critical integrity invariants + 6 warnings · 35 contract tests.
 Everything below is verified by `bash tool/verify_schema.sh`.
 
