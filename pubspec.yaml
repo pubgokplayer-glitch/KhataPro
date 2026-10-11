@@ -155,13 +155,18 @@ flutter:
   # fetched by `tool/fetch_fonts.sh` (kept out of VCS to avoid a 1.4 MB blob in
   # every clone). Uncomment after running it — a declared-but-missing font
   # asset is a hard build failure, so this ships commented on purpose.
-  # fonts:
-  #   - family: Inter
-  #     fonts:
-  #       - asset: assets/fonts/Inter-VariableFont_opsz,wght.ttf
-  #   - family: NotoNastaliqUrdu
-  #     fonts:
-  #       - asset: assets/fonts/NotoNastaliqUrdu-Regular.ttf
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-VariableFont_opsz,wght.ttf
+    - family: NotoNastaliqUrdu
+      fonts:
+        - asset: assets/fonts/NotoNastaliqUrdu-Regular.ttf
+        - asset: assets/fonts/NotoNastaliqUrdu-Bold.ttf
+          weight: 700
+    - family: NotoNaskhArabic
+      fonts:
+        - asset: assets/fonts/NotoNaskhArabic-Regular.ttf
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  tool/ targets

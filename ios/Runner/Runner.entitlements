@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- BYOC backup target: the user's own iCloud container. Free 5 GB quota. -->
+  <key>com.apple.developer.icloud-container-identifiers</key>
+  <array><string>iCloud.$(CFBundleIdentifier)</string></array>
+  <key>com.apple.developer.icloud-services</key>
+  <array><string>CloudDocuments</string></array>
+  <key>com.apple.developer.ubiquity-container-identifiers</key>
+  <array><string>iCloud.$(CFBundleIdentifier)</string></array>
+  <!-- Local Network: LAN peer sync + mDNS discovery (no servers involved). -->
+  <key>com.apple.developer.networking.multicast</key><true/>
+  <!-- Universal links. Needs a *paid* Apple account (Associated Domains is not in
+       the free personal team's capability list) and the apple-app-site-association
+       file from docs/DEEP_LINKS.md §4. The custom scheme below needs neither, which
+       is why it is the recommended path. Uncomment to enable:
+  <key>com.apple.developer.associated-domains</key>
+  <array><string>applinks:khatapro.app</string></array>
+  -->
+</dict>
+</plist>

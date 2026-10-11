@@ -1,0 +1,93 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- LAN sync. mDNS/DNS-SD needs these two; NEARBY_WIFI_DEVICES is NOT needed
+         for discovery on Android 13+ (it is for Wi-Fi Direct scanning), and asking
+         for it would put a scary permission prompt in front of a user who only
+         wants to sync two phones. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- Notifications for reminders; POST_NOTIFICATIONS is runtime on 13+. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Biometrics. USE_BIOMETRIC is normal-level: no prompt. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <application
+        android:label="Digi Khata"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:theme="@style/LaunchTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:excludeFromRecents="false"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <!-- Flutter's own deep linking: this is what turns an incoming uri into
+                 `platformDispatcher.defaultRouteName` (cold start) and into
+                 `didPushRouteInformation` (warm start). Both are implemented in
+                 `lib/apps/khata_app.dart`. Set it explicitly rather than relying on the
+                 default, because "the default changed in some version" is not a thing to
+                 discover on a customer's phone. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="true" />
+
+            <!-- The launcher. Unchanged from the template. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 1 · Our own scheme. No server, no verification, and any app that renders a
+                 tap-able link can hand us the uri. This is the zero-cost path and the one to
+                 standardise on for SMS/WhatsApp reminders. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Declare the scheme with NO host: this app uses `khatapro://party/<id>`,
+                     where `party` arrives as the uri's host. -->
+                <data android:scheme="khatapro" />
+            </intent-filter>
+
+            <!-- 2 · The https app link. Only add this if you actually serve the two files
+                 in §4 from this exact host, and change `khataLinkHost` in
+                 `lib/apps/deep_links.dart` to match. `autoVerify="true"` makes Android
+                 check the host at install time; without a valid assetlinks.json the link
+                 still opens — in the browser, which is exactly the bug this filter exists to
+                 prevent, so it fails *silently*. Verify it (§5). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="khatapro.app" />
+            </intent-filter>
+        </activity>
+
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+
+    <!-- Required to query activities that can process text -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+</manifest>
