@@ -1,0 +1,55 @@
+# ── Flutter / Dart build and tooling output ──────────────────────────────────
+.dart_tool/
+.packages
+build/
+*.dill
+*.g.dart
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock            # an app *should* commit this; see the note in
+                        # docs/REPO_AND_BACKUP.md before changing this line
+
+# ── IDE / analyzer caches ────────────────────────────────────────────────────
+.dartServer/
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# ── dependency caches (never commit; they are ~110 MB) ───────────────────────
+.pub-cache/
+.pub_cache/
+
+# ── platform build output ────────────────────────────────────────────────────
+android/.gradle/
+android/app/.cxx/
+android/local.properties
+android/key.properties
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+macos/Pods/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+
+# ── secrets and key material: never, ever ────────────────────────────────────
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+key.properties
+*.pem
+secrets.json
+service_account*.json
+
+# ── the books themselves, and their backups ──────────────────────────────────
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.khata
+*.khatapack
+
+# ── OS noise ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

@@ -1,0 +1,71 @@
+# Static analysis for KhataPro. Strict on purpose: this app touches money, and
+# the rules below are chosen to make whole classes of runtime bug impossible to
+# write in the first place (no implicit casts on decoded JSON, no dynamic SQL
+# string holes, exhaustive switch on ledger enums, etc.).
+include: package:very_good_analysis/analysis_options.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  plugins:
+    - custom_lint
+  errors:
+    # Generated code (drift / freezed / riverpod) is exempted from style rules.
+    invalid_annotation_target: ignore
+    missing_required_param: error
+    missing_default_value_for_parameter: error
+    body_might_complete_normally_nullable: error
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "lib/l10n/**"
+  # Treat warnings as build failures in CI (`flutter analyze --fatal-warnings`).
+
+linter:
+  rules:
+    # ── Money / data-integrity guards ────────────────────────────────────────
+    always_declare_return_types: true
+    avoid_dynamic_calls: true          # forces typed JSON decoding
+    avoid_slow_async_io: true
+    cancel_subscriptions: true
+    close_sinks: true
+    collection_methods_unrelated_type: true
+    comment_references: false
+    discarded_futures: true            # un-awaited DB writes are a data-loss bug
+    only_throw_errors: true
+    prefer_final_locals: true
+    prefer_final_in_for_each: true
+    unawaited_futures: true
+    use_build_context_synchronously: true
+    # ── Determinism (CRDT): identical input must give identical output ───────
+    prefer_const_constructors: true
+    prefer_const_constructors_in_immutables: true
+    prefer_const_declarations: true
+    prefer_const_literals_to_create_immutables: true
+    # ── Performance: Impeller wants shallow trees & const widgets ────────────
+    avoid_unnecessary_containers: true
+    sized_box_for_whitespace: true
+    use_colored_box: true
+    use_decorated_box: true
+    # ── Safety ───────────────────────────────────────────────────────────────
+    avoid_print: true                  # use the Logger; prints leak to logcat
+    avoid_equals_and_hash_code_on_mutable_classes: true
+    no_leading_underscores_for_local_identifiers: false
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+  errors:
+    # The verification tools under tool/ are command-line programs: stdout IS
+    # their interface, so the print lint does not apply to them.
+    avoid_print: ignore
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+  errors:
+    # The verification tools under tool/ are command-line programs: stdout IS
+    # their interface, so the print lint does not apply to them.
+    avoid_print: ignore

@@ -1,0 +1,183 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  KhataPro — offline-first, zero-cost, double-entry accounting for SMEs
+#  Verified against Flutter stable 3.47.7 / Dart 3.13.5 (2026-10-11)
+#
+#  ZERO-COST RULES ENFORCED IN THIS FILE
+#  ────────────────────────────────────
+#  1. No hosted-database SDK (no Firebase, no Supabase, no AWS Amplify). The
+#     primary store is a local SQLCipher database shipped inside the APK/IPA.
+#  2. The only "cloud" touches are the user's OWN storage: Google Drive (their
+#     15 GB free quota, via their own OAuth client) and iCloud (Apple's free
+#     container quota). We never hold a server, an API key, or a bill.
+#  3. Peer sync is LAN P2P over WebRTC/QUIC — no rendezvous server, no TURN
+#     (mDNS + QR pairing, per docs/ARCHITECTURE.md §4).
+#  4. Every dependency below is free/open-source or free-tier with no
+#     server-side component that we must operate.
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: khata_pro
+description: >-
+  Offline-first, server-free, double-entry accounting ledger for small
+  businesses. Bring-Your-Own-Cloud backup (Google Drive / iCloud) and
+  CRDT-based LAN peer sync. Zero infrastructure cost.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NATIVE SQLITE BUILD (Dart build hooks — the 2026 replacement for
+#  sqlcipher_flutter_libs, which is EOL as of package:sqlite3 v3.x).
+#  This single block is what gives us SQLCipher 256-bit AES-256-CBC/PBKDF2-256k
+#  compiled into the app. Do NOT add sqlite3_flutter_libs / sqlcipher_flutter_libs
+#  alongside it — they now do nothing and only trigger pub's "obsolete" warning.
+#  Alternatives: `source: sqlite3mc` (SQLite3MultipleCiphers, smaller, WASM-capable).
+# ─────────────────────────────────────────────────────────────────────────────
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # ── State / DI ─────────────────────────────────────────────────────────────
+  flutter_riverpod: ^3.4.3
+  riverpod_annotation: ^4.0.7
+  meta: ^1.19.0
+
+  # ── Navigation ─────────────────────────────────────────────────────────────
+  go_router: ^18.0.2
+
+  # ── Immutable models & codegen annotations ─────────────────────────────────
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.12.0
+
+  # ── Local database: SQLite (SQLCipher) + reactive queries ──────────────────
+  #  Drift is *not* a backend — it is the typed, reactive front door to SQLite.
+  #  package:sqlite3 ^3.7.0 pulls the prebuilt SQLCipher binaries (see `hooks`).
+  drift: ^2.35.2
+  drift_flutter: ^0.3.1
+  sqlite3: ^3.7.0
+  path: ^1.9.1
+  path_provider: ^2.1.6
+
+  # ── Security ───────────────────────────────────────────────────────────────
+  flutter_secure_storage: ^11.2.0   # Keychain / Android Keystore-wrapped prefs
+  local_auth: ^3.0.2                # biometric app lock
+  cryptography_plus: ^3.0.0         # pure-Dart AES-256-GCM, HKDF, Argon2id
+  pointycastle: ^4.0.0              # AES-GCM primitives for the non-UI isolate
+  argon2: ^1.0.1                    # RFC 9106 KDF for the SQLCipher passphrase
+  crypto: ^3.0.7                    # SHA-256 / HMAC (merkle roots, checkpoint MACs)
+  uuid: ^4.6.0                      # UUIDv7 ids (time-ordered, merge-friendly)
+
+  # ── BYOC backup · Google Drive (Android-first, works cross-platform) ───────
+  #  100 % free tier: the *user's* Drive. We request only drive.file scope, so we
+  #  can touch nothing but the folder this app creates.
+  google_sign_in: ^7.2.0
+  googleapis: ^17.0.0
+  googleapis_auth: ^2.3.4
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+  http: ^1.6.0
+
+  # ── BYOC backup · iCloud (iOS/macOS) ───────────────────────────────────────
+  #  Pushes ciphertext into the app's ubiquity container
+  #  ($(TeamIdentifierPrefix)bundle-id). Covered by the user's free 5 GB iCloud.
+  icloud_storage: ^2.2.0
+
+  # ── Peer sync: LAN only, zero servers ─────────────────────────────────────
+  flutter_webrtc: ^1.6.2+hotfix.4   # data channels over DTLS — the CRDT transport
+  multicast_dns: ^0.3.3+1           # mDNS/DNS-SD discovery on the local network
+  mobile_scanner: ^7.4.2            # QR pairing (offers/answers, no signaling server)
+  qr_flutter: ^4.1.0                # render the pairing QR + invoice UPI/QR codes
+  connectivity_plus: ^7.3.2         # link-type hints (wifi vs cellular metering)
+
+  # ── Platform / UX ──────────────────────────────────────────────────────────
+  intl: ^0.20.3                     # NOTE: must stay compatible with the pin
+                                    # imposed by flutter_localizations (0.20.x).
+  flutter_local_notifications: ^22.3.1  # due-date + daily-close reminders
+  timezone: ^0.11.1                 # correct local scheduling (Asia/Karachi)
+  workmanager: ^0.10.10             # nightly compaction / Drive-upload window
+  share_plus: ^13.3.1
+  url_launcher: ^6.3.3
+  permission_handler: ^13.0.2
+  device_info_plus: ^13.3.0
+  package_info_plus: ^10.2.2
+  image_picker: ^1.2.4
+  flutter_image_compress: ^2.5.1    # shrink receipt photos BEFORE encryption
+  archive: ^4.5.0                   # BACKUP v2 container (tar + gzip)
+  csv: ^8.0.0
+  pdf: ^3.13.1                      # invoice / statement PDFs rendered on-device
+  printing: ^5.15.1
+  fl_chart: ^1.2.0                  # 120 fps charts (Impeller-friendly, no Skia
+                                    # saveLayer abuse → no jank on low-end SoCs)
+
+  # ── Observability (opt-in, self-hosted or local-only) ─────────────────────
+  sentry_flutter: ^10.0.0           # OFF by default; enabled only with the user's
+                                    # own DSN in settings. No data leaves otherwise.
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+  build_runner: ^2.16.2
+  drift_dev: ^2.35.1                # SQL → typed Dart; also powers `make-migrations`
+  freezed: ^4.0.2
+  json_serializable: ^6.14.1
+  riverpod_generator: ^4.0.9
+  custom_lint: ^0.8.1
+  riverpod_lint: ^3.1.9
+  very_good_analysis: ^11.0.0
+  mocktail: ^1.0.5
+  test: ^1.31.0
+
+  # Asset / splash generation
+  flutter_native_splash: ^2.4.8
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/sql/migrations/
+    - assets/sql/ops/
+    - assets/i18n/
+    - assets/images/
+
+  # Urdu (Nastaliq) + English typography. Font files are OFL-licensed and are
+  # fetched by `tool/fetch_fonts.sh` (kept out of VCS to avoid a 1.4 MB blob in
+  # every clone). Uncomment after running it — a declared-but-missing font
+  # asset is a hard build failure, so this ships commented on purpose.
+  # fonts:
+  #   - family: Inter
+  #     fonts:
+  #       - asset: assets/fonts/Inter-VariableFont_opsz,wght.ttf
+  #   - family: NotoNastaliqUrdu
+  #     fonts:
+  #       - asset: assets/fonts/NotoNastaliqUrdu-Regular.ttf
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  tool/ targets
+# ─────────────────────────────────────────────────────────────────────────────
+flutter_native_splash:
+  color: "#0F766E"
+  color_dark: "#04211E"
+  image: assets/images/splash_logo.png
+  android_12:
+    color: "#0F766E"
+    image: assets/images/splash_logo_android12.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: assets/images/app_icon.png
+  adaptive_icon_background: "#0F766E"
+  adaptive_icon_foreground: assets/images/app_icon_foreground.png
