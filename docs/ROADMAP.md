@@ -110,10 +110,14 @@ against signature stubs transcribed from the pinned package versions
 | 7 | The mDNS listener was never removed from the `ChangeNotifier`, leaking an `NsdManager` registration per visit to the sync screen | fixed |
 | 8 | The iCloud store was built around a container path the plugin does not expose, and treated `upload()` as complete when it only means the local container copy exists | fixed |
 
-## ◐ Deliverable 4 — UI (Impeller, EN + UR) — **state layer delivered, widget layer next**
+## ◐ Deliverable 4 — UI (Impeller, EN + UR) — **delivered; the first local build is what remains**
 
-The half that can be proven in this workspace is done and green; the half that needs
-Flutter is listed, file by file, in `docs/UI.md` §6.
+Every layer that can be proven in this workspace is done and green: the state layer, the widget
+layer in four batches, and the deep-link path end to end. What is *not* proven is anything that
+needs a device — frame times under Impeller, Urdu Nastaliq shaping, the biometric prompt, and the
+first `flutter build`. `docs/UI.md` §6 and §7 list the files and the checks; `docs/DEEP_LINKS.md`
+is the native half that has to be pasted into a `flutter create` output before a reminder link can
+reach the app at all.
 
 **Delivered and verified**
 
@@ -125,6 +129,15 @@ Flutter is listed, file by file, in `docs/UI.md` §6.
 | 4 | Paging + the ledger walk with an integrity verdict | `lib/ui/lists/paged_list.dart` | 30 060-item and 4 000-row walks, back-scroll, `ui_verify` groups 7–8 |
 | 5 | Every read the screens make, as named SQL | `lib/ui/state/queries.dart` | **executed against a real database** in `ui_db_verify` |
 | 6 | The reactive state: `ChangeBus` wired to the database's commit, providers, `LedgerController` | `lib/ui/state/{changes,providers,ledger_source}.dart` | `ui_db_verify`, 53 checks, real writes + real Riverpod container |
+
+
+**`ui_db_verify` after batch 4 — 66 checks.** The 13 new ones are section H, "the links find
+their rows": the id a link *carries* is the id the app *looks up* (the party link resolves to the
+customer whose balance the books report), a foreign id routes but finds no row (which is what the
+router's "not in this khata" page is for), every bill link resolves to the row the bill book
+searches for, a link carrying the bill *number* instead of the id quietly opens the worklist, the
+pairing ticket survives to the settings screen, and the reminder quotes the balance the books
+report.
 
 **Found while building it** — six defects, four of them user-visible, four in code that was
 already "delivered": a party sub-ledger code that made **any party with a name longer than
@@ -154,15 +167,27 @@ at all, which is what `OrderBook.postInvoice` now fixes. `docs/UI.md` §5 has th
 | 16 | The write side: `BookCommands` (pure Dart), `CommandOutcome`, the toast that shows a refusal | `lib/ui/commands/book_commands.dart`, `lib/ui/widgets/outcome_toast.dart` | **`tool/ui_commands_verify.dart`, 45 checks** — real commands, real database, real change bus |
 | 17 | The app's own words, English and Urdu, with no ARB pipeline (and why) | `lib/ui/format/strings.dart` | analyzer clean; `UiStrings` is the single place a translator needs |
 
-**Next, in order** (`docs/UI.md` §6 for the file list and the constraints):
+**Widget layer, batch 4 part 2 — done** (commit `780e49c`, analyzer clean, sweep re-run):
 
-* the eight screens — Dashboard, Party list, Party ledger, Cash book, Stock book, Staff
-  book, Bill book, Settings — each a thin watch-render-command layer over §5;
-* `lib/apps/khata_app.dart` + `lib/main.dart` (the router and the entry point land with
-  the screens, since the routes are the screens). The router must handle **deep links**:
-  an SMS/WhatsApp reminder opens the party's ledger, a shared invoice opens the bill;
-* goldens + frame-time checks on a device, which is also where Impeller and Nastaliq
-  shaping get their first real test.
+| # | Item | Where | Evidence |
+|---|---|---|---|
+| 18 | The eight screens — Dashboard, Party list, Party ledger, Cash book, Bill book, Stock book, Staff book, Settings — each a thin watch-render-command layer | `lib/ui/screens/**` | analyzer clean; the providers they watch are the ones `ui_db_verify` exercises (53 checks) |
+| 19 | One form for all six entries: amount field, date chips, party picker, memo, and a refusal that keeps the numbers in the sheet | `lib/ui/widgets/forms.dart`, `lib/ui/format/money_input.dart` | analyzer clean; the amount round-trip is a check |
+| 20 | The write specs, as **pure Dart** (`entry_models.dart` + `entry_specs.dart`) so they are reachable from a headless run | `lib/ui/commands/entry_models.dart`, `entry_specs.dart` | **`tool/ui_commands_verify.dart`, 68 checks** (was 45) |
+| 21 | Reminder and invoice messages (EN + UR), `sms:` / `wa.me` intents, E.164 normalisation, no messaging plugin | `lib/ui/commands/reminders.dart` | the message round-trips through the parser in the suite |
+| 22 | The deep-link path: parser, route table, action, form, and both start types | `lib/apps/deep_links.dart`, `lib/ui/routes.dart`, `lib/apps/khata_app.dart`, `lib/main.dart` | 23 checks, cold **and** warm start; `docs/DEEP_LINKS.md` is the native half |
+| 23 | The shell, the KPI/row cards, and `money_label.dart` (the Dr/Cr tone decision, extracted so there is one copy) | `lib/ui/widgets/{nav_shell,cards,money_label,reminder_sheet}.dart` | analyzer clean; `ledger_view.dart` re-exports, so behaviour did not move |
+
+**What remains — and none of it is code that can be proven here:**
+
+* paste the native blocks from `docs/DEEP_LINKS.md` into the `flutter create` output
+  (`AndroidManifest.xml`, `Info.plist`, entitlements, and the two association files if you
+  want the https form);
+* `tool/fetch_fonts.sh` + uncomment the `fonts:` block (already prepared, deliberately
+  commented);
+* `flutter run --profile` for the frame graph, `flutter build apk --release --split-per-abi`
+  and `flutter build ipa` — the first real compile, and the first place a Flutter API
+  mismatch would show up.
 
 **Found by batch 4's integration test** (`tool/ui_commands_verify.dart`, against a real
 database — one defect, both fixed):
@@ -172,6 +197,17 @@ database — one defect, both fixed):
 * `settleInvoice` returned the receipt of the *payment* entry it posted internally, whose
   `documentId` is null, so the toast could not name the settled invoice. The command now
   names the document the caller passed in. `docs/UI.md` §5.
+
+**Found by the deep-link checks** (`tool/ui_commands_verify.dart` §G — one defect, and it would
+have been invisible in every test that taps a button):
+
+* the parser dropped `?action=receive`, because it built a location of `/party/<id>` and a
+  *location* is all a cold start has. A shopkeeper tapping "receive payment" in an SMS reminder
+  would have landed on the right ledger with nothing open, twice — cold and warm. The action now
+  travels inside the location, and the receipt form opens once the party row has loaded.
+* a second, quieter one: `buildBillLink` puts the readable bill number in `?no=…`. Nothing
+  parses it, and the check that says so exists so that nobody later decides it is "unused" and
+  routes by it.
 
 ## ⏭ Deliverable 5 — more sync surface
 

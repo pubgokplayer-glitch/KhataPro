@@ -17,12 +17,10 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show Variable;
 import 'package:sqlite3/sqlite3.dart';
 
-import '../lib/core/security/key_custody.dart';
 import '../lib/core/security/sqlcipher_key.dart';
 import '../lib/core/crdt/lww.dart';
 import '../lib/core/utils/epoch_day.dart';
@@ -559,7 +557,7 @@ Future<void> _orderBook(Directory root) async {
   final mirrorDay = await _scalarIntRaw(khata,
       'SELECT entry_date FROM journal_entries WHERE id = ?', [lockedVoid.mirrorEntryId]);
   _check('the reversing entry is dated the first open day '
-      '(${EpochDay.toIso(mirrorDay ?? 0)} = lock date + 1, today is '
+      '(${EpochDay.toIso(mirrorDay)} = lock date + 1, today is '
       '${EpochDay.toIso(EpochDay.today())})',
       lockedVoid.reversalDate == today + 1 && mirrorDay == today + 1);
   await khata.db.customStatement(
@@ -712,7 +710,7 @@ Future<void> _crashRecovery(Directory root) async {
   raw.execute("UPDATE session_flags SET value = '1' WHERE key = 'dirty_open'");
   raw.execute('UPDATE account_balances SET debit_minor = debit_minor + 777 '
       'WHERE ledger_id = ?', [ledgerId]);
-  raw.dispose();
+  raw.close();
 
   khata = await KhataDb.open(KhataOpenRequest(
     databaseFile: file,
@@ -828,7 +826,7 @@ Future<String?> _sessionFlagRaw(File file, String key) async {
         database.select('SELECT value FROM session_flags WHERE key = ?', [key]);
     return rows.isEmpty ? null : rows.first.values.first as String?;
   } finally {
-    database.dispose();
+    database.close();
   }
 }
 

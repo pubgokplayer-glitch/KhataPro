@@ -48,19 +48,16 @@ import '../lib/apps/deep_links.dart';
 import '../lib/core/security/sqlcipher_key.dart';
 import '../lib/core/utils/epoch_day.dart';
 import '../lib/data/db/dao/base_dao.dart' show AccountRole, DocKind;
-import '../lib/data/db/dao/parties_dao.dart' show PartiesDao, PartyKind;
+import '../lib/data/db/dao/parties_dao.dart' show PartyKind;
 import '../lib/data/db/database.dart';
 import '../lib/data/db/migration_runner.dart' show FileSystemAssetLoader;
-import '../lib/data/repositories/order_book.dart';
 import '../lib/ui/commands/book_commands.dart';
 import '../lib/ui/commands/entry_specs.dart';
 import '../lib/ui/commands/reminders.dart';
-import '../lib/ui/format/formatting.dart';
 import '../lib/ui/format/money_input.dart';
 import '../lib/ui/format/strings.dart';
 import '../lib/ui/routes.dart';
 import '../lib/ui/commands/entry_models.dart';
-import '../lib/ui/state/changes.dart';
 import '../lib/ui/state/providers.dart';
 import '../lib/ui/state/queries.dart';
 
@@ -309,7 +306,6 @@ Future<void> _aHalfCashSaleMovesTwoScreens(
 
   final dashboardBefore = await _data(() => container.read(dashboardProvider));
   final cashBefore = _cashOf(await _data(() => container.read(cashAccountsProvider)));
-  final billsBefore = await _data(() => container.read(billsProvider(DocKind.saleInvoice)));
   final flowsBefore = await _data(() => container.read(cashFlowProvider(month)));
 
   const gross = 1250000; // 12 500.00 in paisa — the shop's money is minor units, always
@@ -449,7 +445,7 @@ Future<void> _settlingClearsTheDebtWithoutASecondSale(
   _check('the payment was posted', outcome.ok, outcome.message);
   _check(
     'the receipt quotes the invoice it settled, not the payment entry',
-    outcome.message.contains(bill.docNo ?? '\u0000'),
+    outcome.message.contains(bill.docNo),
     'message="${outcome.message}" docNo="${bill.docNo}"',
   );
 

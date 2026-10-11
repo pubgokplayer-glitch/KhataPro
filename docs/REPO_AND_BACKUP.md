@@ -59,6 +59,25 @@ Running a bare `dart` command without `PUB_CACHE` set will silently refill the
 workspace with ~110 MB. That is precisely what `./dartx` exists to prevent.
 Persisting the setting in your shell profile is the durable fix.
 
+**If a test fails while *loading* — "No space left on device".** The harness's `/tmp`
+is a small `tmpfs` (about 1 GB here) and it holds the Dart SDK (~640 MB), the pub cache
+(~160 MB) and every test runner's kernel output. It can fill, and the symptom is not a
+disk-full message at the top of the run: it is
+
+```
+Failed to load "test/core/crdt_merge_test.dart": Cannot copy file to
+'/tmp/dart-tmp/…/kernel…/test.dart_2.dill' … (OS Error: No space left on device)
+```
+
+which reads like a broken test file and is not one. Check with `df -h /tmp`; the fix is
+deleting scratch directories (`/tmp/pkg`, `/tmp/btest`, `/tmp/dart-tmp/*`) — never the
+SDK or the pub cache. Measure to confirm:
+
+```bash
+df -h /tmp
+du -sh /tmp/* | sort -rh | head
+```
+
 **No APK/IPA builds in this workspace.** Builds are hundreds of megabytes and the
 deliverable is source. Build locally:
 

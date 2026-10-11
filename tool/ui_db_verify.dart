@@ -27,14 +27,19 @@ import 'dart:math' as math;
 import 'package:drift/drift.dart' show Variable;
 import 'package:riverpod/riverpod.dart';
 
+import '../lib/apps/deep_links.dart';
 import '../lib/core/security/sqlcipher_key.dart';
 import '../lib/core/utils/epoch_day.dart';
-import '../lib/data/db/dao/base_dao.dart' show AccountRole;
+import '../lib/data/db/dao/base_dao.dart' show AccountRole, DocKind;
 import '../lib/data/db/dao/parties_dao.dart';
 import '../lib/data/db/database.dart';
 import '../lib/data/db/migration_runner.dart';
 import '../lib/data/repositories/order_book.dart';
+import '../lib/ui/commands/book_commands.dart';
+import '../lib/ui/commands/reminders.dart';
+import '../lib/ui/format/strings.dart';
 import '../lib/ui/lists/paged_list.dart' show DayHeaderCell;
+import '../lib/ui/routes.dart';
 import '../lib/ui/state/changes.dart';
 import '../lib/ui/state/ledger_source.dart';
 import '../lib/ui/state/providers.dart';
@@ -169,6 +174,7 @@ Future<void> main(List<String> args) async {
     await _theBusCoalesces(bus);
     await _theLedgerScreenFollowsTheBooks(container, khata, ledgerId, bus);
     await _narrowRebuilds(container, khata, ledgerId, bus);
+    await _linksFindTheirRows(container);
   } finally {
     container.dispose();
     await bus.dispose();
@@ -691,4 +697,164 @@ Future<void> _narrowRebuilds(
 
   stockSub.close();
   billsSub.close();
+}
+
+// ── H · the links, against real rows ─────────────────────────────────────────
+
+/// The link path where it meets the *book*: the ids a link carries are row ids, and a row that
+/// is not in this database has to behave differently from one that is.
+///
+/// The pure half of this chain — three uri shapes, the route table, the action, the form — is
+/// 23 checks in `tool/ui_commands_verify.dart` §G, and it runs with no database at all. What it
+/// cannot tell you is whether the id the app *writes into* a link is the id the app will *look
+/// up* when the link comes back. That is what this section is for, and it is the difference
+/// between a reminder that opens the right ledger and one that opens "not in this khata".
+Future<void> _linksFindTheirRows(ProviderContainer container) async {
+  _section('the links find their rows — and a foreign row is refused, not guessed');
+
+  final money = container.read(moneyFormatProvider);
+  final strings = UiStrings(container.read(displayPrefsProvider).language);
+  final commands = container.read(bookCommandsProvider);
+
+  // Subscribe before reading: the family providers start on listen only (see §B). The suite's
+  // global subscription covers `billsProvider(0)` — *every* kind — while the bill book screen
+  // asks for one kind, so the key this section reads needs its own listener.
+  _keep(container.listen(partyProvider(_creditCustomer), (_, __) {}));
+  _keep(container.listen(billsProvider(DocKind.saleInvoice), (_, __) {}));
+
+  // ── a party link built by the app, for a party that is in the book ─────────
+  final link = buildPartyLink(_creditCustomer);
+  final parsed = parseDeepLink(link);
+  _check(
+    'the link the ledger screen sends names the party by the id the database uses',
+    parsed?.partyId == _creditCustomer,
+    '${parsed?.partyId}',
+  );
+  final row = await _data(() => container.read(partyProvider(_creditCustomer)));
+  _check(
+    'and the screen the link opens reads that row: the customer with the real balance',
+    row?.name == 'Zubaida General Store' && row!.netMinor != 0,
+    '${row?.name} / ${row?.netMinor}',
+  );
+
+  // ── the action, against a real row ─────────────────────────────────────────
+  final receiving = parseDeepLink(Uri.parse('${buildPartyLink(_creditCustomer)}?action=receive'))!;
+  final routed = routeFor(receiving);
+  _check(
+    'a "receive payment" link routes to the ledger with its action intact',
+    routed is GoScreen &&
+        routed.path == '/party/$_creditCustomer?action=receive' &&
+        routed.action == LinkAction.receive,
+    '$routed',
+  );
+  final form = formFor(
+    action: LinkAction.receive,
+    forms: EntryForms(commands: commands!, money: money, strings: strings),
+    partyId: receiving.partyId,
+    partyName: row!.name,
+  );
+  _check(
+    'and the form it opens is locked to that same party, so the money cannot land elsewhere',
+    form?.lockedPartyId == _creditCustomer,
+  );
+
+  // ── a party id from another phone's book ───────────────────────────────────
+  // A perfectly well-formed id that this database has never seen. The link parses — it is
+  // *ours* — and the lookup returns nothing, which is the case the router answers with the
+  // "not in this khata" page (via `GoScreen.expectsRow`) rather than a ledger that spins.
+  const foreignId = '019a1b2c-9999-7000-8000-000000009999';
+  _keep(container.listen(partyProvider(foreignId), (_, __) {}));
+  final foreignLink = parseDeepLink(buildPartyLink(foreignId));
+  final foreignRouted = routeFor(foreignLink!);
+  final settled = await _until(() => container.read(partyProvider(foreignId)).hasValue);
+  _check(
+    'a link to a party that is not in this book parses, routes — and finds no row',
+    foreignLink.partyId == foreignId &&
+        foreignRouted is GoScreen &&
+        foreignRouted.expectsRow &&
+        settled &&
+        container.read(partyProvider(foreignId)).value == null,
+    'expectsRow=${foreignRouted is GoScreen && foreignRouted.expectsRow}',
+  );
+
+  // ── the bill book's one-shot open ──────────────────────────────────────────
+  // `bill_book_screen.dart` opens a document once by *searching the worklist it already
+  // watches* for `state.uri.queryParameters['doc']`. So the link's id has to match the row
+  // the list renders, byte for byte, and it has to still be in the list.
+  final bills = await _data(() => container.read(billsProvider(DocKind.saleInvoice)));
+  _check(
+    'the bill book has rows for a link to find',
+    bills.isNotEmpty,
+    '${bills.length} bills',
+  );
+  final everyBillLinkResolves = bills.every(
+    (bill) =>
+        documentIdOf(buildBillLink(documentId: bill.documentId, docNo: bill.docNo)) ==
+        bill.documentId,
+  );
+  _check(
+    'every bill link the app can build resolves to the row the bill book searches for',
+    everyBillLinkResolves,
+    '${bills.map((b) => b.docNo).join(', ')}',
+  );
+  final overdue = bills.firstWhere((b) => b.docNo == 'INV-0998', orElse: () => bills.first);
+  final billLink = buildBillLink(documentId: overdue.documentId, docNo: overdue.docNo);
+  _check(
+    'the shared link is readable to a human — the bill number travels with it',
+    billLink.queryParameters['no'] == overdue.docNo,
+    '$billLink',
+  );
+  _check(
+    'and routing ignores that number: the id is the path segment, so a link cannot be routed '
+    'by a string a shopkeeper can type',
+    documentIdOf(billLink) == overdue.documentId,
+  );
+
+  // The honest edge: a hand-written link carrying the *number* instead of the id parses (it is
+  // a string in the right place) and finds nothing — so the bill book opens and shows the
+  // worklist. No crash, no empty screen, no wrong bill.
+  final byNumber = parseDeepLink(Uri.parse('khatapro://bill/INV-0998'));
+  _check(
+    'a link that carries the bill number instead of its id quietly opens the worklist, '
+    'browsing no bill',
+    byNumber != null &&
+        documentIdOf(Uri.parse('khatapro://bill/INV-0998')) == 'INV-0998' &&
+        !bills.any((b) => b.documentId == 'INV-0998'),
+  );
+
+  // ── the pairing link ───────────────────────────────────────────────────────
+  final ticket = 'a-pairing-ticket-with-two-dots.abc.def';
+  final join = parseDeepLink(Uri.parse(KhataRoutes.join(ticket)));
+  final joinScreen = routeFor(join!);
+  _check(
+    'a pairing link carries its ticket to the screen that starts the flow',
+    join.ticket == ticket &&
+        joinScreen is GoScreen &&
+        joinScreen.ticket == ticket &&
+        joinScreen.path == '/join?t=$ticket',
+    '$joinScreen',
+  );
+
+  // ── the reminder, built from the real balance ───────────────────────────────
+  // The same call the ledger screen's phone button makes, with the balance the books report.
+  // The url inside the message has to be one this app parses back — and the amount in the
+  // message has to be the amount the customer owes, not a rounded or re-formatted one.
+  final body = buildReminder(
+    partyName: row.name,
+    balanceMinor: row.netMinor,
+    money: money,
+    link: partyLinkFor(_creditCustomer),
+    language: UiLanguage.english,
+  );
+  final inBody = RegExp(r'[a-z]+://\S+').firstMatch(body)?.group(0) ?? '';
+  _check(
+    'the reminder carries a link back to the very party whose balance it quotes',
+    parseDeepLink(Uri.parse(inBody))?.partyId == _creditCustomer,
+    'body: $body',
+  );
+  _check(
+    'and the balance in the message is the balance in the books',
+    body.contains(money.balance(row.netMinor)),
+    'expected ${money.balance(row.netMinor)}',
+  );
 }

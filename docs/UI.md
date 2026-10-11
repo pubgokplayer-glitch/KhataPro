@@ -170,10 +170,11 @@ Defect 1 is the one to remember: it was invisible to a suite that only ever crea
 called "Ahmed Traders" and "Warn Case". The integration suite exists because *short, tidy
 test data hides the class of bug that only appears in real names.*
 
-## 6 · The widget layer: what exists, what does not
+## 6 · The widget layer — complete
 
-The state layer is what the widgets render; nothing below it needed to change. Files are
-written in the order below, and the analyzer is clean after every batch:
+The state layer is what the widgets render; nothing below it needed to change. The widget
+layer was written in four batches (commits `52c0852`, `f68e1a7`, `38f1781`, `780e49c`), and
+the analyzer is clean after every one of them. Everything in this table is now **done**:
 
 | file | what it holds | status |
 | --- | --- | --- |
@@ -185,9 +186,17 @@ written in the order below, and the analyzer is clean after every batch:
 | `lib/ui/widgets/skeletons.dart` | loading / empty / failed / integrity states, and the paged-list footer that lets a failed page retry in place | **done** |
 | `lib/ui/widgets/ledger_view.dart` | the ledger rows: day headers, running balance, `Dr`/`Cr`, the integrity banner, and `ledgerTone` — the one colour decision (§4) | **done** |
 | `lib/ui/widgets/live_charts.dart` | `CustomPaint` over `chart_math.dart`: cached `Path`s/ticks/laid-out labels, no plugin, no `saveLayer`, `RepaintBoundary` + `isComplex`/`willChange` | **done** |
-| `lib/ui/screens/{dashboard,party_list,party_ledger,cash_book,stock_book,staff_book,bill_book,settings}.dart` | eight screens, each: watch a provider → `.when(...)` → render → call a command | next |
-| `lib/ui/commands/book_commands.dart` | the write side: `postSale`, `postInvoice`, `settleInvoice`, `postExpense` behind a command object that takes a `ChangeSink` (`changedNow()` for the save button's own receipt) | next |
-| `lib/apps/khata_app.dart`, `lib/main.dart` | `MaterialApp.router` + `ProviderScope` overrides + `go_router` routes, and the entry point | with the screens |
+| `lib/ui/commands/book_commands.dart` | the write side: `recordSale`, `recordInvoice`, `settleInvoice`, `recordReceipt`, `recordExpense`, `recordBill`, `settleBill`, `addParty` — each one a transaction, each returning a `CommandOutcome` | **done** |
+| `lib/ui/commands/entry_models.dart` | `EntrySheetValues` + `EntrySheetSpec`: what a form collects and what a screen tells the sheet to do. **Pure Dart, on purpose** — see §7 | **done** |
+| `lib/ui/commands/entry_specs.dart` | the six specs that turn collected values into commands (`saleSpec`, `invoiceSpec`, `receiptSpec`, `expenseSpec`, `billSpec`, `settleInvoiceSpec`, `settleBillSpec`) | **done** |
+| `lib/ui/commands/reminders.dart` | the reminder and invoice messages (EN + UR), `sms:` / `wa.me` intents, E.164 phone normalisation. No messaging plugin — the share sheet is the platform's | **done** |
+| `lib/ui/format/money_input.dart` | the amount field's own parser/formatter, with the lakh grouping rules a shopkeeper types | **done** |
+| `lib/ui/widgets/forms.dart` | one `EntrySheet` for all six entries — amount, date chips, party picker, memo, and a refusal that keeps the numbers on screen | **done** |
+| `lib/ui/widgets/{cards,money_label,nav_shell,reminder_sheet}.dart` | KPI tiles and row cells; `LedgerColumnKind` + `ledgerTone` + `MoneyLabel` (extracted verbatim from `ledger_view.dart` so no second copy exists); the five-tab shell and the sync badge; the share sheet | **done** |
+| `lib/ui/screens/{dashboard,party_list,party_ledger,cash_book,stock_book,staff_book,bill_book,settings}.dart` | eight screens, each: watch a provider → `.when(...)` → render → call a command | **done** |
+| `lib/ui/routes.dart` | the one mapping from a parsed link to a screen and to a form (`routeFor`, `actionOf`, `formFor`) | **done** |
+| `lib/apps/deep_links.dart` | the uri parser: custom scheme, https app link, bare path, and one level of url wrapping. No Flutter import, so it is testable without a widget tree | **done** |
+| `lib/apps/khata_app.dart`, `lib/main.dart` | `MaterialApp.router` + `ProviderScope` override + the router (cold *and* warm start), and the four-line entry point | **done** |
 
 The analyzer sees all of this without a Flutter SDK: `tool/plugin_stubs/` now also stubs
 `flutter_riverpod` (re-exporting the **real** `package:riverpod`, so `AsyncValue`, the
@@ -216,3 +225,41 @@ Two constraints to keep while writing the rest:
 * keyboard and text rendering for Urdu input, and RTL mirroring of the pager and charts;
 * `flutter build apk --release` / `build ipa` — the first compile of the widget layer, and
   the first place a Flutter framework API mismatch shows up.
+
+## 7 · The deep-link path, and why the models moved
+
+Three of the user's directives for batch 4 are visible in the file list above; one of them changed
+the architecture, and it is worth writing down because the reason is not obvious from the code.
+
+**The specs had to become reachable from a plain `dart run`.** `EntrySheetValues` and
+`EntrySheetSpec` started out inside `widgets/forms.dart`. They hold no widgets — five fields of
+data, four flags and a callback — but living under `package:flutter/material.dart` meant no tool
+could import them, because a headless run cannot resolve Flutter. The consequence was that the one
+check the batch was *asked* for — "the bill spec posts to the supplier side" — could only have been
+a comment. They now live in `lib/ui/commands/entry_models.dart`; `forms.dart` imports and
+re-exports both, so no screen changed a single import. `tool/ui_commands_verify.dart` drives the real
+specs against a real SQLCipher book, and the bill spec's debit role and payable control are
+assertions rather than prose.
+
+**The link chain, in the order it runs:**
+
+```
+uri  →  parseDeepLink (pure)      →  KhataDeepLink
+     →  routeFor (pure)           →  a location, or a GoScreen with its parameters
+     →  GoRouter                  →  the screen (cold start: initialLocation, warm: didPushRouteInformation)
+     →  actionOf (pure)           →  LinkAction.receive
+     →  formFor (pure)            →  the same receiptSpec the screen's own button builds
+     →  EntrySheet.onSave         →  BookCommands → the books
+```
+
+Every arrow except the third is a pure function, and the third is one line of
+`khata_app.dart` — which is why the whole path is 23 checks instead of a manually tapped phone.
+The checks found one real defect: `?action=receive` was being dropped by the parser, because the
+parser built a location of `/party/<id>` and a location is all a cold start has. The action now
+rides inside the location (`deep_links.dart`), and `party_ledger_screen.dart` opens the form once,
+after its own row has loaded.
+
+**One deliberate absence:** there is no money-**out** form behind a link. The write API has no
+"paid a supplier, no bill named" command — money leaves the drawer by settling a bill or by booking
+an expense — so `?action=pay` parses, lands on the ledger, and stops there. A link is a url that may
+have sat in a chat thread for a week; it does not get to guess which bill it meant.

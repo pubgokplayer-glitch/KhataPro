@@ -85,7 +85,9 @@ khata_pro/
 ├─ test/sql/                ← schema contract tests (run on desktop SQLite in CI)
 ├─ tool/                    ← setup_native.sh · fetch_fonts.sh · verify_schema.sh
 ├─ docs/DATA_LAYER.md       ← D2: the data layer and its proofs
-├─ docs/UI.md               ← D4: the reactive contract, and what is left
+├─ docs/UI.md               ← D4: the reactive contract, and the widget layer
+├─ docs/DEEP_LINKS.md       ← the native half of reminders/invoice sharing
+├─ docs/REVIEW_B4.md        ← batches 3-4 as one reviewable sheet
 └─ docs/ARCHITECTURE.md     ← the decisions, with the math
 ```
 
@@ -107,8 +109,9 @@ The Dart side, all runnable in this workspace without a Flutter SDK
 ```
 crypto 72/72 · aes 27/27 · crdt 55/55 · sync 133/133 · security 54/54
 data layer 81/81 · sql contracts 35/35 · flutter test 16/16
-ui logic 174/174 · ui + database integration 53/53      (docs/UI.md)
-dart analyze: no issues found over lib/ and the new tool
+ui logic 174/174 · ui + database integration 66/66      (docs/UI.md)
+     · the write path + deep links 68/68                (docs/REVIEW_B4.md)
+dart analyze: no issues found over lib/, tool/ and the analyzer stubs
 ```
 
 ## 6. Documentation index
@@ -123,7 +126,15 @@ dart analyze: no issues found over lib/ and the new tool
   the pinned plugin APIs caught.
 * `docs/UI.md` — **Deliverable 4**: the reactive contract (`ChangeBus` → providers →
   screens), the four wiring traps that cost real debugging time, the six defects this
-  stage found in shipped code, and what only a device can settle.
+  stage found in shipped code, the widget layer file by file, the deep-link path, and
+  what only a device can settle.
+* `docs/REVIEW_B4.md` — **batches 3–4, reviewable**: every claim followed by the file,
+  the check name or the command output that makes it true — and the list of what is
+  deliberately not machine-checked, with the reason.
+* `docs/DEEP_LINKS.md` — the native half of deep links: the Android `intent-filter`s,
+  the iOS `Info.plist` keys and entitlements, the `assetlinks.json` /
+  `apple-app-site-association` files, and the on-device checklist. **Required before a
+  reminder link can reach the app.**
 * `docs/PLATFORM_SETUP.md` — the Android manifest, iOS entitlements and Google Cloud
   steps a release build needs, plus exactly which files have not been compiled here.
 * `docs/REPO_AND_BACKUP.md` — the 128 MB workspace budget, the cleanup script, and how
