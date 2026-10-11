@@ -145,6 +145,48 @@ dart analyze: no issues found over lib/, tool/ and the analyzer stubs
 * `docs/STRUCTURE.md` — annotated file map and naming conventions.
 * `docs/THIRD_PARTY.md` — licence obligations before you ship a binary.
 
-## 7. Licence
+## 7. Building it locally (the last mile)
+
+Everything above runs without a Flutter SDK. The build itself does not — and none of it was
+compiled in this workspace (no APK/IPA is built here, by rule). The order that works:
+
+```bash
+# 1 · get the code (see docs/REPO_AND_BACKUP.md §2 for pushing to your own remote)
+git clone khata_pro.bundle khata_pro && cd khata_pro    # or: git pull after adding a remote
+
+# 2 · platform folders + everything native, in one idempotent step
+#     creates android/ + ios/ if missing, pins com.khata.pro, injects the deep-link
+#     intent-filters, the plist keys, the no-backup rules and the entitlements
+bash tool/setup_native.sh
+
+# 3 · dependencies (the SQLCipher build comes from pubspec hooks — no NDK compile)
+flutter pub get
+
+# 4 · the fonts (one time, ~2 MB; the pubspec block is already prepared, commented)
+bash tool/fetch_fonts.sh          # then uncomment the `fonts:` block in pubspec.yaml
+
+# 5 · sanity check before the long build
+flutter analyze
+flutter test
+
+# 6 · build
+flutter build apk --release --split-per-abi     # Android: app-arm64-v8a-release.apk
+flutter build ipa --release                     # iOS: needs macOS + Xcode, and a signing team
+```
+
+Then, on a device (`docs/DEEP_LINKS.md` §5 has the full checklist):
+
+```bash
+adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+adb shell am start -a android.intent.action.VIEW \
+  -d "khatapro://party/<a real party uuid from your book>" com.khata.pro
+```
+
+**What is left unproven until this runs:** frame times under Impeller, Urdu Nastaliq shaping and
+the verified 1.55 line height, the biometric prompt, the 16 KB page alignment on the Play
+Console, and the first Flutter API mismatch — which is the only class of bug a release build can
+find that the 781 checks in §5 cannot.
+
+## 8. Licence
 App code MIT. SQLCipher community build: BSD-style (Zetetic) — see
 `docs/THIRD_PARTY.md` before shipping a closed-source binary.

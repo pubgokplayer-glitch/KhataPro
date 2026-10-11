@@ -14,10 +14,36 @@ other half, it is entirely native, and it cannot be written into this repository
 `security/SecurityChannel.kt`, and `ios/` only `AppDelegate.swift` and
 `security/SecurityChannel.swift`. This document is that half, as exact blocks to paste.
 
-> **Do this after `flutter create --org com.khata --project-name khata_pro --platforms=android,ios .`
-> (see `docs/PLATFORM_SETUP.md` §6, and the handover section of the README).** The command adds the
-> manifest, the plist, the Gradle files and the Xcode project *around* the hand-written native files
-> that are already here; it does not overwrite `lib/`.
+## 0 · You do not have to paste any of this by hand
+
+`bash tool/setup_native.sh` does it. Run from the repository root, after `flutter create` has
+produced the platform folders (step 0 of that script does the scaffolding itself if they are
+missing):
+
+```bash
+cd khata_pro
+bash tool/setup_native.sh          # idempotent — safe to re-run
+flutter pub get
+```
+
+The script pins the Gradle `namespace`/`applicationId` to `com.khata.pro` (so the manifest's
+`.MainActivity` resolves to *this* repository's `FlutterFragmentActivity`, not the template's plain
+`FlutterActivity`), removes the template's `MainActivity.kt`, injects both intent-filters and the
+`flutter_deeplinking_enabled` meta-data on Android, writes the `CFBundleURLTypes` /
+`FlutterDeepLinkingEnabled` keys on iOS, and creates the `@xml/data_extraction_rules` file the
+manifest names. It is idempotent: a second run changes no bytes, and it never re-injects a filter it
+already added.
+
+Verified as far as this workspace allows: the patching logic was run against a
+`flutter create`-shaped tree (Gradle, manifest, plist, both MainActivity files) and asserted —
+29 checks covering every change it claims to make, plus a byte-for-byte second-run comparison.
+What could **not** be run here is `flutter create` itself, or a build.
+
+> **What the rest of this document is for:** the blocks below are the same content, verbatim, as the
+> manual path. Read them when you want to know *why* a line is there, when you are patching a
+> project the script has already touched, or when something on a real phone does not work and you
+> need to check what the OS was actually told. §4 (the association files) and §5 (the on-device
+> checklist) are **not** automated — they are yours to do.
 
 ---
 
@@ -118,6 +144,9 @@ standardise on for SMS/WhatsApp reminders. -->
     </intent-filter>
 </activity>
 ```
+
+*(The script adds the two filters and the meta-data to the template's `<activity>` element; it also
+adds `launchMode="singleTop"` if the template did not.)*
 
 **Why `launchMode="singleTop"`:** the app is a single-activity Flutter app. With the default
 (`standard`) a link tapped from a notification while the app is in the background creates a

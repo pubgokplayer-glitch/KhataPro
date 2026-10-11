@@ -37,6 +37,14 @@ dependencies {
 }
 ```
 
+**The application id.** `tool/setup_native.sh` pins Gradle's `namespace` and `applicationId` to
+`com.khata.pro`, which is the package the Kotlin in this repository uses and the package the
+manifest's short name `.MainActivity` resolves against. Without that pin, `flutter create` derives
+its own package from `--org` and `--project-name`, and the app builds and runs against the
+template's `FlutterActivity`: no `FragmentActivity`, no `khata_pro/security` channel, and nothing
+on screen to say so. The script also deletes the template's `MainActivity.kt` so there is only ever
+one class with that name.
+
 ### `MainActivity.kt` — must be a `FlutterFragmentActivity`
 
 ```kotlin
