@@ -71,7 +71,7 @@ dependencies:
   flutter_secure_storage: ^11.2.0   # Keychain / Android Keystore-wrapped prefs
   local_auth: ^3.0.2                # biometric app lock
   cryptography_plus: ^3.0.0         # pure-Dart AES-256-GCM, HKDF, Argon2id
-  pointycastle: ^4.0.0              # AES-GCM primitives for the non-UI isolate
+  pointycastle: ^3.9.1              # AES-GCM primitives for the non-UI isolate
   argon2: ^1.0.1                    # RFC 9106 KDF for the SQLCipher passphrase
   crypto: ^3.0.7                    # SHA-256 / HMAC (merkle roots, checkpoint MACs)
   uuid: ^4.6.0                      # UUIDv7 ids (time-ordered, merge-friendly)
