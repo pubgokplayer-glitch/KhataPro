@@ -32,7 +32,15 @@ khata_pro/
 │  └─ images/
 │
 ├─ lib/
-│  ├─ app/                         MaterialApp, router (go_router), theme, typography
+│  ├─ apps/                        MaterialApp.router, go_router routes, the boot wiring
+│  │  ├─ bootstrap.dart            FutureBuilder → unlock gate → open database
+│  │  └─ khata_app.dart            ProviderScope overrides + MaterialApp.router (with the screens)
+│  ├─ ui/                          the presentation layer (widgets only, no SQL)
+│  │  ├─ theme/                    tokens.dart (audited palette) → theme.dart (ThemeData)
+│  │  ├─ state/                    providers, queries, change bus  ← the D4 state layer
+│  │  ├─ widgets/                  virtual_list, ledger_view, live_charts, skeletons, gate
+│  │  ├─ screens/                  the eight screens
+│  │  ├─ charts/ · format/ · lists/ · commands/
 │  ├─ core/
 │  │  ├─ money/                    MoneyMinor (int-backed) — never a double
 │  │  ├─ crdt/                     HLC encode/decode/merge, LWW resolver, tombstone rules

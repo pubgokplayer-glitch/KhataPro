@@ -159,25 +159,33 @@ Defect 1 is the one to remember: it was invisible to a suite that only ever crea
 called "Ahmed Traders" and "Warn Case". The integration suite exists because *short, tidy
 test data hides the class of bug that only appears in real names.*
 
-## 6 · What is not done yet
+## 6 · The widget layer: what exists, what does not
 
-**The widget layer.** The state layer is what it will render; nothing below it needs to
-change. The files, in the order they should be written:
+The state layer is what the widgets render; nothing below it needed to change. Files are
+written in the order below, and the analyzer is clean after every batch:
 
-| file | what it holds |
-| --- | --- |
-| `lib/apps/khata_app.dart` | `MaterialApp.router` + `ProviderScope` overrides (`databaseProvider`, boot-time preferences), theme wiring, `go_router` routes |
-| `lib/ui/theme/theme.dart` | `ThemeData` from `tokens.dart` (the palette in `theme/tokens.dart` is already audited by `ui_verify`: contrast ratios, dark/light pairs, semantic names) |
-| `lib/ui/widgets/biometric_gate.dart` | the first screen: unlock through the platform security channel, with the "sync may run in the background" state shown honestly (see `docs/SYNC.md` §1) |
-| `lib/ui/widgets/virtual_list.dart` | the `ListView.builder` over `PagedListController`/`LedgerPager`, one `RepaintBoundary` per row, scroll-driven `loadMore` |
-| `lib/ui/widgets/ledger_view.dart` | the ledger rows: date headers, running balance, `Dr`/`Cr`, the integrity banner |
-| `lib/ui/widgets/live_charts.dart` | `CustomPaint` wrappers over `chart_math.dart` — no plugin, no `saveLayer`, `RepaintBoundary` |
-| `lib/ui/widgets/skeletons.dart` | loading and empty states, so "no data" never looks like "still loading" |
-| `lib/ui/screens/{dashboard,party_list,party_ledger,cash_book,stock_book,staff_book,bill_book,settings}.dart` | eight screens, each: watch a provider → `.when(...)` → render → call a command |
-| `lib/ui/commands/book_commands.dart` | the write side: `postSale`, `postInvoice`, `settleInvoice`, `postExpense` behind a command object that takes a `ChangeSink` (`changedNow()` for the save button's own receipt) |
+| file | what it holds | status |
+| --- | --- | --- |
+| `lib/ui/theme/theme.dart` | `ThemeData` from `tokens.dart`, plus `KhataColors` (the `ThemeExtension` carrying `moneyIn`/`moneyOut`/`warning`/`critical`, which `colorScheme` has no slots for) and `KhataType.urdu` (the verified 1.55 line height) | **done** |
+| `lib/data/db/database_init.dart` | the boot path `database.dart` always pointed at: app directory → keystore → DEK → `SQLCipher PRAGMA key` → `KhataDb.open`. Holds `BundleSqlAssetLoader`, `DeviceIdentity` (`device.json`), `KeyEnvelopeStore` (`khata_pro.key.json`) and the typed `KhataUnlockFailure` | **done** |
+| `lib/ui/widgets/biometric_gate.dart` | the first screen: unlock through the platform channel, custody notes verbatim, the "sync still works in the background" sentence from `SYNC.md` §1 | **done** |
+| `lib/apps/bootstrap.dart` | boot wiring: `FutureBuilder` → splash → gate → `KhataDatabase`; the mapping from `KhataUnlockFailure` to what the gate offers ("try again" vs. "restore a backup") | **done** |
+| `lib/ui/widgets/virtual_list.dart` | `ListView.builder` + `itemExtentBuilder`, scroll-driven prefetch fired once per page, keyed cells, no second `RepaintBoundary` | **done** |
+| `lib/ui/widgets/skeletons.dart` | loading / empty / failed / integrity states, and the paged-list footer that lets a failed page retry in place | **done** |
+| `lib/ui/widgets/ledger_view.dart` | the ledger rows: day headers, running balance, `Dr`/`Cr`, the integrity banner | next |
+| `lib/ui/widgets/live_charts.dart` | `CustomPaint` wrappers over `chart_math.dart` — no plugin, no `saveLayer`, `RepaintBoundary` | next |
+| `lib/ui/screens/{dashboard,party_list,party_ledger,cash_book,stock_book,staff_book,bill_book,settings}.dart` | eight screens, each: watch a provider → `.when(...)` → render → call a command | next |
+| `lib/ui/commands/book_commands.dart` | the write side: `postSale`, `postInvoice`, `settleInvoice`, `postExpense` behind a command object that takes a `ChangeSink` (`changedNow()` for the save button's own receipt) | next |
+| `lib/apps/khata_app.dart`, `lib/main.dart` | `MaterialApp.router` + `ProviderScope` overrides + `go_router` routes, and the entry point | with the screens |
 
-Each screen's data contract already exists and is asserted; the widget layer is
-presentation over it. Two constraints to keep while writing it:
+The analyzer sees all of this without a Flutter SDK: `tool/plugin_stubs/` now also stubs
+`flutter_riverpod` (re-exporting the **real** `package:riverpod`, so `AsyncValue`, the
+providers and the `select` extension are the pinned declarations, not transcriptions),
+`go_router`, and the `material` surface the widget layer uses. That is what makes
+`./dartx analyze --packages=plugin_stubs_config.json lib` meaningful for a `.dart` file that
+imports `package:flutter/material.dart`.
+
+Two constraints to keep while writing the rest:
 
 * **Impeller / 120 fps:** no `saveLayer`, no layout work in `build` hot paths, `const`
   constructors, `RepaintBoundary` on charts and long lists, and no arithmetic in widgets —

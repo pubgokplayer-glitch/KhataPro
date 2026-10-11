@@ -69,3 +69,32 @@ class MissingPluginException implements Exception {
   @override
   String toString() => 'MissingPluginException($message)';
 }
+
+// ── assets ───────────────────────────────────────────────────────────────────
+// Verified against Flutter 3.47: `rootBundle` is a top-level *final* (not const)
+// `AssetBundle`, and `AssetManifest` has no public constructor — the only way to build
+// one is `loadFromAssetBundle`. `listAssets()` returns asset *keys*.
+
+abstract class AssetBundle {
+  const AssetBundle();
+
+  Future<String> loadString(String key, {bool cache = true}) =>
+      throw UnimplementedError('stub');
+}
+
+final AssetBundle rootBundle = _StubAssetBundle();
+
+class _StubAssetBundle extends AssetBundle {
+  const _StubAssetBundle();
+}
+
+class AssetManifest {
+  const AssetManifest._(this._assets);
+
+  static Future<AssetManifest> loadFromAssetBundle(AssetBundle bundle) =>
+      throw UnimplementedError('stub');
+
+  final List<String> _assets;
+
+  List<String> listAssets() => _assets;
+}

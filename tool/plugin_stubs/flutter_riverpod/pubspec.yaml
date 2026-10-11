@@ -1,0 +1,8 @@
+name: flutter_riverpod
+version: 3.4.3
+publish_to: none
+environment:
+  sdk: ^3.10.0
+dependencies:
+  flutter: any
+  riverpod: any

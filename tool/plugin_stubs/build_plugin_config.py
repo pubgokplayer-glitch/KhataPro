@@ -21,7 +21,15 @@ import json
 import pathlib
 import sys
 
-STUB_PACKAGES = ["flutter", "flutter_webrtc", "nsd", "icloud_storage", "path_provider"]
+STUB_PACKAGES = [
+    "flutter",
+    "flutter_riverpod",
+    "go_router",
+    "flutter_webrtc",
+    "nsd",
+    "icloud_storage",
+    "path_provider",
+]
 DEFAULT_CONFIG = "/tmp/harness/.dart_tool/package_config.json"
 DEFAULT_OUT = "/tmp/harness/plugin_stubs_config.json"
 

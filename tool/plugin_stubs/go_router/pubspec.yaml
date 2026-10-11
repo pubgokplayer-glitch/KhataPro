@@ -1,0 +1,7 @@
+name: go_router
+version: 18.0.2
+publish_to: none
+environment:
+  sdk: ^3.10.0
+dependencies:
+  flutter: any
