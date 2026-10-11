@@ -145,16 +145,33 @@ at all, which is what `OrderBook.postInvoice` now fixes. `docs/UI.md` §5 has th
 | 12 | Loading / empty / failed / integrity states and the retry-in-place footer | `lib/ui/widgets/skeletons.dart` |
 | 13 | Analyzer stubs for `flutter` (painting + widgets), `flutter_riverpod` (re-exporting the real `riverpod`) and `go_router` — so the widget layer is type-checked without a Flutter SDK | `tool/plugin_stubs/**` |
 
+**Widget layer, batch 3 — done** (commit `f68e1a7`, analyzer clean):
+
+| # | Item | Where | Evidence |
+|---|---|---|---|
+| 14 | The ledger rows: `Dr`/`Cr` from the row's own sign, day headers with the day's net, the running balance, the integrity banner, `ledgerTone` — the one colour decision | `lib/ui/widgets/ledger_view.dart` | `ui_verify` (tone table), analyzer clean |
+| 15 | Charts as `CustomPaint`: one `Path` per series, ticks and laid-out labels cached behind an identity key, no plugin, no `saveLayer`, `RepaintBoundary` | `lib/ui/widgets/live_charts.dart` | `ui_verify` chart groups, analyzer clean |
+| 16 | The write side: `BookCommands` (pure Dart), `CommandOutcome`, the toast that shows a refusal | `lib/ui/commands/book_commands.dart`, `lib/ui/widgets/outcome_toast.dart` | **`tool/ui_commands_verify.dart`, 45 checks** — real commands, real database, real change bus |
+| 17 | The app's own words, English and Urdu, with no ARB pipeline (and why) | `lib/ui/format/strings.dart` | analyzer clean; `UiStrings` is the single place a translator needs |
+
 **Next, in order** (`docs/UI.md` §6 for the file list and the constraints):
 
-* `lib/ui/widgets/ledger_view.dart` and `lib/ui/widgets/live_charts.dart`;
 * the eight screens — Dashboard, Party list, Party ledger, Cash book, Stock book, Staff
   book, Bill book, Settings — each a thin watch-render-command layer over §5;
-* `lib/ui/commands/book_commands.dart`, the write side;
 * `lib/apps/khata_app.dart` + `lib/main.dart` (the router and the entry point land with
-  the screens, since the routes are the screens);
+  the screens, since the routes are the screens). The router must handle **deep links**:
+  an SMS/WhatsApp reminder opens the party's ledger, a shared invoice opens the bill;
 * goldens + frame-time checks on a device, which is also where Impeller and Nastaliq
   shaping get their first real test.
+
+**Found by batch 4's integration test** (`tool/ui_commands_verify.dart`, against a real
+database — one defect, both fixed):
+
+* `CommandOutcome` exposed only the *journal entry* number, so a save toast quoted `JE-0002`
+  where the shopkeeper needs the number on the paper bill (`INV-0001`). It now carries both.
+* `settleInvoice` returned the receipt of the *payment* entry it posted internally, whose
+  `documentId` is null, so the toast could not name the settled invoice. The command now
+  names the document the caller passed in. `docs/UI.md` §5.
 
 ## ⏭ Deliverable 5 — more sync surface
 

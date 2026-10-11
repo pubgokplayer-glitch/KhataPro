@@ -475,6 +475,26 @@ abstract final class Icons {
   static const IconData sync = IconData(0xe006);
   static const IconData warning = IconData(0xe007);
   static const IconData error_outline = IconData(0xe008);
+  static const IconData check = IconData(0xe009);
+  static const IconData warning_amber = IconData(0xe00a);
+  static const IconData receipt_long = IconData(0xe00b);
+  static const IconData inventory_2 = IconData(0xe00c);
+  static const IconData groups = IconData(0xe00d);
+  static const IconData account_balance_wallet = IconData(0xe00e);
+  static const IconData settings = IconData(0xe00f);
+  static const IconData dashboard = IconData(0xe010);
+  static const IconData trending_up = IconData(0xe011);
+  static const IconData trending_down = IconData(0xe012);
+  static const IconData phone = IconData(0xe013);
+  static const IconData share = IconData(0xe014);
+  static const IconData cloud_done = IconData(0xe015);
+  static const IconData cloud_off = IconData(0xe016);
+  static const IconData lock = IconData(0xe017);
+  static const IconData chevron_right = IconData(0xe018);
+  static const IconData filter_list = IconData(0xe019);
+  static const IconData person_add = IconData(0xe01a);
+  static const IconData payments = IconData(0xe01b);
+  static const IconData edit_note = IconData(0xe01c);
 }
 
 // ── gesture ──────────────────────────────────────────────────────────────────
@@ -1514,11 +1534,19 @@ class Tooltip extends Widget {
   final Widget? child;
 }
 
+enum SnackBarBehavior { fixed, floating }
+
 class SnackBar {
-  const SnackBar({required this.content, this.duration, this.backgroundColor});
+  const SnackBar({
+    required this.content,
+    this.duration,
+    this.backgroundColor,
+    this.behavior,
+  });
   final Widget content;
   final Duration? duration;
   final Color? backgroundColor;
+  final SnackBarBehavior? behavior;
 }
 
 class ScaffoldMessenger {

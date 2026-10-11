@@ -126,6 +126,15 @@ abstract class EdgeInsetsGeometry {
 /// widget layer uses these for anything that has to look right in Urdu, which is
 /// everything with padding.
 class EdgeInsetsDirectional extends EdgeInsetsGeometry {
+  const EdgeInsetsDirectional.fromSTEB(
+    double start,
+    double top,
+    double end,
+    double bottom,
+  )   : start = start,
+        top = top,
+        end = end,
+        bottom = bottom;
   const EdgeInsetsDirectional.only({
     this.start = 0,
     this.top = 0,
