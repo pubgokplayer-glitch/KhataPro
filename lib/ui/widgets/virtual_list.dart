@@ -39,6 +39,9 @@ import '../theme/tokens.dart';
 /// list's contract: what you return must be safe to rebuild at any time.
 typedef VirtualRowBuilder = Widget Function(BuildContext context, int index);
 
+/// Height of row `index` in this layout. Constant-time arithmetically.
+typedef ItemExtentBuilder = double? Function(int index);
+
 /// A windowed list.
 ///
 /// [itemCount] is the number of *cells*, not rows: the ledger's day headers are cells too
@@ -199,15 +202,9 @@ class _VirtualListState extends State<VirtualList> {
     }
     final builder = widget.itemExtentBuilder;
     if (builder == null) return 0;
-    final dimensions = SliverLayoutDimensions(
-      scrollOffset: dy,
-      precedingScrollExtent: null,
-      crossAxisExtent: 0,
-      viewportMainAxisExtent: 0,
-    );
     var offset = 0.0;
     for (var index = 0; index < widget.itemCount; index++) {
-      final extent = builder(index, dimensions) ?? 0;
+      final extent = builder(index) ?? 0;
       if (offset + extent > dy) return index;
       offset += extent;
     }
@@ -226,7 +223,6 @@ class _VirtualListState extends State<VirtualList> {
       physics: widget.physics,
       itemCount: widget.itemCount,
       itemExtent: widget.itemExtent,
-      itemExtentBuilder: widget.itemExtentBuilder,
       addAutomaticKeepAlives: false,
       cacheExtent: widget.cacheExtent,
       findChildIndexCallback:
@@ -267,7 +263,7 @@ abstract final class CellExtents {
   /// every visible index plus the cached ones.
   static ItemExtentBuilder ofHeaderIndices(Iterable<int> headerIndices) {
     final headers = headerIndices is Set<int> ? headerIndices : headerIndices.toSet();
-    return (index, dimensions) =>
+    return (index) =>
         headers.contains(index) ? Spacing.dayHeaderHeight : Spacing.listRowHeight;
   }
 

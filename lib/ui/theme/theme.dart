@@ -193,7 +193,7 @@ abstract final class KhataType {
       );
 
   /// Proportional digits misalign a column of amounts; tabular ones do not.
-  static const List<FontFeature> tabular = [FontFeature.tabularFigures];
+  static const List<FontFeature> tabular = [FontFeature.tabularFigures()];
 }
 
 abstract final class KhataTheme {

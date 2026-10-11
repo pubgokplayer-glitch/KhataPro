@@ -96,11 +96,15 @@ class _KhataAppState extends State<KhataApp> with WidgetsBindingObserver {
 
   /// The warm-start half. The engine hands over the uri the OS just delivered.
   @override
-  Future<void> didPushRouteInformation(RouteInformation routeInformation) async {
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) async {
     final uri = Uri.tryParse(routeInformation.uri.toString());
-    if (uri == null) return;
+    if (uri == null) return false;
     final link = parseDeepLink(uri);
-    if (link != null) _router.go(_locationFor(uri));
+    if (link != null) {
+      _router.go(_locationFor(uri));
+      return true;
+    }
+    return false;
   }
 
   /// The cold-start half: the OS's initial uri, parsed once.

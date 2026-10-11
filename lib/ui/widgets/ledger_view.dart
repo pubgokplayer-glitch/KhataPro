@@ -287,7 +287,7 @@ class LedgerList extends ConsumerWidget {
                 keyOf: (index) => keys[index],
                 // Answered from a map built in this same build: O(1) per key the framework
                 // asks about, and no scan of 30 000 rows on the frame a sync lands.
-                indexOfKey: (key) => indexOfKey[key.value],
+                indexOfKey: (key) => indexOfKey[(key as ValueKey).value],
                 canLoadMore: state.hasMore && !state.isLoading,
                 onLoadMore: () => ref.read(ledgerProvider(partyId).notifier).loadMore(),
                 padding: EdgeInsetsDirectional.zero,

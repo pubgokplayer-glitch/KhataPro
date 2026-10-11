@@ -153,7 +153,7 @@ class _CashBookScreenState extends ConsumerState<CashBookScreen> {
             error: (error, _) => const SizedBox(height: 58),
             data: (accounts) => SizedBox(
               height: 58,
-              child: ListView(
+              child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: accounts.length,
                 itemExtent: 132,
