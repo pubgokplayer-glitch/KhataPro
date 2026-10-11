@@ -95,7 +95,7 @@ dependencies:
   multicast_dns: ^0.3.3+1           # mDNS/DNS-SD discovery on the local network
   mobile_scanner: ^7.4.2            # QR pairing (offers/answers, no signaling server)
   qr_flutter: ^4.1.0                # render the pairing QR + invoice UPI/QR codes
-  connectivity_plus: ^7.3.2         # link-type hints (wifi vs cellular metering)
+  connectivity_plus: ^7.3.1         # link-type hints (wifi vs cellular metering)
 
   # ── Platform / UX ──────────────────────────────────────────────────────────
   intl: ^0.20.3                     # NOTE: must stay compatible with the pin
@@ -141,6 +141,7 @@ dev_dependencies:
 dependency_overrides:
   analyzer_plugin: ^0.14.0
   analyzer: ^14.0.0
+  dbus: ^0.7.8
 
   # Asset / splash generation
   flutter_native_splash: ^2.4.8
