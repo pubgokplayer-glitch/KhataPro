@@ -133,13 +133,26 @@ already "delivered": a party sub-ledger code that made **any party with a name l
 Riverpod silently dropped; a missing `ref.mounted` guard; and `documents` having no writer
 at all, which is what `OrderBook.postInvoice` now fixes. `docs/UI.md` §5 has the table.
 
+**Widget layer, batch 1–2 — done** (commit `52c0852`, analyzer clean, sweep re-run):
+
+| # | Item | Where |
+|---|---|---|
+| 7 | The boot path: bundle asset loader, device identity, the wrapped-DEK sidecar, typed unlock failures | `lib/data/db/database_init.dart` |
+| 8 | Boot wiring: splash → custody gate → `KhataDatabase`, and the failure-to-affordance mapping | `lib/apps/bootstrap.dart` |
+| 9 | `ThemeData` from the audited tokens + `KhataColors` extension + Urdu text metrics | `lib/ui/theme/theme.dart` |
+| 10 | The unlock screen, with the custody notes verbatim | `lib/ui/widgets/biometric_gate.dart` |
+| 11 | The list engine: `itemExtentBuilder`, one prefetch per page, keyed cells, no double `RepaintBoundary` | `lib/ui/widgets/virtual_list.dart` |
+| 12 | Loading / empty / failed / integrity states and the retry-in-place footer | `lib/ui/widgets/skeletons.dart` |
+| 13 | Analyzer stubs for `flutter` (painting + widgets), `flutter_riverpod` (re-exporting the real `riverpod`) and `go_router` — so the widget layer is type-checked without a Flutter SDK | `tool/plugin_stubs/**` |
+
 **Next, in order** (`docs/UI.md` §6 for the file list and the constraints):
 
-* `lib/apps/khata_app.dart`, `lib/ui/theme/theme.dart` — the app shell;
-* `lib/ui/widgets/{biometric_gate,virtual_list,ledger_view,live_charts,skeletons}.dart`;
+* `lib/ui/widgets/ledger_view.dart` and `lib/ui/widgets/live_charts.dart`;
 * the eight screens — Dashboard, Party list, Party ledger, Cash book, Stock book, Staff
   book, Bill book, Settings — each a thin watch-render-command layer over §5;
 * `lib/ui/commands/book_commands.dart`, the write side;
+* `lib/apps/khata_app.dart` + `lib/main.dart` (the router and the entry point land with
+  the screens, since the routes are the screens);
 * goldens + frame-time checks on a device, which is also where Impeller and Nastaliq
   shaping get their first real test.
 
