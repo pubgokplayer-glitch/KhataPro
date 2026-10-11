@@ -52,7 +52,8 @@ def setkv(src, key, value):
 # a passphrase. See docs/PLATFORM_SETUP.md §1.
 s = setkv(s, 'namespace', '"com.khata.pro"')
 s = setkv(s, 'applicationId', '"com.khata.pro"')
-s = setkv(s, 'ndkVersion', '"27.2.12479018"')
+s = setkv(s, 'compileSdk', '37')
+s = setkv(s, 'ndkVersion', '"28.2.13676358"')
 if 'minSdk' not in s:
     s = s.replace('defaultConfig {', 'defaultConfig {\n        minSdk = 23', 1)
 s = setkv(s, 'minSdk', '23')

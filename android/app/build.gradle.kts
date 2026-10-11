@@ -7,8 +7,8 @@ plugins {
 
 android {
     namespace = "com.khata.pro"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.2.12479018"
+    compileSdk = 37
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -17,6 +17,7 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs = freeCompilerArgs + listOf("-Xskip-metadata-version-check")
     }
 
     defaultConfig {
