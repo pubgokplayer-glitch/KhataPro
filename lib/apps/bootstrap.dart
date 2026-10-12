@@ -124,20 +124,29 @@ class _KhataBootstrapState extends State<KhataBootstrap> {
         if (boot != null) return widget.builder(context, boot);
 
         final failure = snapshot.error;
+        final Widget content;
         if (failure is KhataUnlockFailure) {
-          return _GateForFailure(
+          content = _GateForFailure(
             failure: failure,
             plan: _plan,
             onPassphrase: _unlockWithPassphrase,
             onRetry: _start,
           );
-        }
-        if (failure != null) {
+        } else if (failure != null) {
           // Not a typed unlock failure: a bug or a device problem, and the honest thing is
           // to say so with the error text rather than a generic "something went wrong".
-          return _BootError(error: failure, onRetry: _start);
+          content = _BootError(error: failure, onRetry: _start);
+        } else {
+          content = const BootSplash();
         }
-        return const BootSplash();
+
+        final (light, dark) = KhataTheme.pair();
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: light,
+          darkTheme: dark,
+          home: content,
+        );
       },
     );
   }
