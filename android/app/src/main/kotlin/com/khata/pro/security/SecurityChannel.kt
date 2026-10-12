@@ -161,6 +161,13 @@ class SecurityChannel(
             )
         }
 
+        try {
+            activity.getSharedPreferences("khata_keystore_fingerprints", Context.MODE_PRIVATE)
+                .edit()
+                .remove("fp_$alias")
+                .apply()
+        } catch (_: Exception) {}
+
         val spec = KeyGenParameterSpec.Builder(
             alias,
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
@@ -220,20 +227,42 @@ class SecurityChannel(
 
     /**
      * A stable, non-secret identifier for a key: the first 8 bytes of SHA-256 over
-     * its public certificate. It changes only when the key does, so
+     * its public certificate if available, or a stable hex fingerprint persisted per alias
+     * in SharedPreferences. It changes only when the key is deleted and recreated, so
      * `key_material` can notice a rotation it did not cause.
      */
     private fun fingerprintOf(alias: String): String {
-        val cert = keyStore().getCertificate(alias) ?: return ""
-        return MessageDigest.getInstance("SHA-256")
-            .digest(cert.encoded)
-            .take(8)
-            .joinToString("") { "%02x".format(it) }
+        try {
+            val cert = keyStore().getCertificate(alias)
+            if (cert != null) {
+                val hex = MessageDigest.getInstance("SHA-256")
+                    .digest(cert.encoded)
+                    .take(8)
+                    .joinToString("") { "%02x".format(it) }
+                if (hex.isNotEmpty()) return hex
+            }
+        } catch (_: Exception) {
+            // SecretKey in AndroidKeyStore doesn't have an X.509 certificate
+        }
+
+        val prefs = activity.getSharedPreferences("khata_keystore_fingerprints", Context.MODE_PRIVATE)
+        var fp = prefs.getString("fp_$alias", null)
+        if (fp.isNullOrEmpty()) {
+            fp = java.util.UUID.randomUUID().toString().replace("-", "").take(16).lowercase()
+            prefs.edit().putString("fp_$alias", fp).apply()
+        }
+        return fp
     }
 
     private fun delete(alias: String) {
         val ks = keyStore()
         if (ks.containsAlias(alias)) ks.deleteEntry(alias)
+        try {
+            activity.getSharedPreferences("khata_keystore_fingerprints", Context.MODE_PRIVATE)
+                .edit()
+                .remove("fp_$alias")
+                .apply()
+        } catch (_: Exception) {}
     }
 
     // ── wrap / unwrap ────────────────────────────────────────────────────────

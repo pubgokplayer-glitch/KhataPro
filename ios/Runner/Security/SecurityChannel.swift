@@ -295,11 +295,17 @@ final class SecurityChannel: NSObject {
     /// external representation, first 8 bytes. It changes only when the key does,
     /// so `key_material` can notice a rotation it did not cause.
     private func fingerprint(of key: SecKey) -> String {
-        guard let publicKey = SecKeyCopyPublicKey(key),
-              let data = SecKeyCopyExternalRepresentation(publicKey, nil) as Data? else {
-            return ""
+        if let publicKey = SecKeyCopyPublicKey(key),
+           let data = SecKeyCopyExternalRepresentation(publicKey, nil) as Data? {
+            let fp = data.shortFingerprint
+            if !fp.isEmpty { return fp }
         }
-        return data.shortFingerprint
+        if let attrs = SecKeyCopyAttributes(key) as? [String: Any],
+           let tag = attrs[kSecAttrApplicationTag as String] as? Data {
+            let fp = tag.shortFingerprint
+            if !fp.isEmpty { return fp }
+        }
+        return UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(16).lowercased()
     }
 
     private func isInEnclave(_ key: SecKey) -> Bool {
