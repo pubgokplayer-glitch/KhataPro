@@ -22,9 +22,9 @@ android {
     }
 
     defaultConfig {
-    applicationId = "com.khata.pro"
-    minSdk = 23
-    targetSdk = 36
+        applicationId = "com.khata.pro"
+        minSdk = 26
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

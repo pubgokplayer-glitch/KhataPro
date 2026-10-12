@@ -55,8 +55,8 @@ s = setkv(s, 'applicationId', '"com.khata.pro"')
 s = setkv(s, 'compileSdk', '37')
 s = setkv(s, 'ndkVersion', '"28.2.13676358"')
 if 'minSdk' not in s:
-    s = s.replace('defaultConfig {', 'defaultConfig {\n        minSdk = 23', 1)
-s = setkv(s, 'minSdk', '23')
+    s = s.replace('defaultConfig {', 'defaultConfig {\n        minSdk = 26', 1)
+s = setkv(s, 'minSdk', '26')
 s = setkv(s, 'targetSdk', '36')
 if 'jniLibs' not in s:
     s = s.replace('buildTypes {', '''packaging {
